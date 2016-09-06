@@ -403,7 +403,7 @@ End Sub
 
 
 '--------------------------------- MCP23S17 AREA ----------------------------------------------
-#include"..\MCP23017_Lib.sbp"
+#include"MCP23017_Lib.sbp"
 Const MCP_CONTROLBYTE_WRITE=&H40
 Const MCP_CONTROLBYTE_READ =&H41
 
