@@ -5,15 +5,22 @@ N64 ROM Dumper using FT232H
 FT232HとMCP23S17を用いたN64の吸出し機です。ROMとSRAMの吸出しが一応できます。部品数も少なく、USB接続で高速な吸出しができます。
 Windows向けです。
 
-まだコードの整理はやっていません。
+コード未整理です。
+
+##セーブデータに関する注意
+ * セーブデータ保護回路を省いた場合、SRAMを用いたソフト（時のオカリナなど）のセーブがき飛ぶ可能性が高くなります。
+ * 保護回路を入れたとしても消えるものは消えます。
+ * Windows側でソフトを立ち上げ、[INSERT CART AND PRESS ENTER]の表示を見るまでカートリッジを挿入しないでください。
+ * 吸出し中や、アクセスLEDが点灯中はカートリッジを抜かないでください。
 
 ## 開発環境
-	パーツ : AE-FT232HL + MCP23S17 (+ 2SA1015 + 10KΩ抵抗)
-	開発言語：ActiveBasic ver4 + 自分用ライブラリ
-	PC : HM55 + Windows10 32bit
+ * パーツ : AE-FT232HL + MCP23S17 (+ 2SA1015 + 10KΩ抵抗)
+ * 開発言語：ActiveBasic ver4 + 自分用ライブラリ
+ * PC : HM55 + Windows10 32bit
+ * FT232H-Config：QDC（kitahei88氏作><http://kitahei88.blog.fc2.com/blog-entry-124.html>）と同じ設定
 	
-	コンパイルにはこちらのライブラリが必要です。
-	https://github.com/RGBA-CRT/RGBALib
+ * コンパイルにはこちらのライブラリが必要です。  
+<https://github.com/RGBA-CRT/RGBALib>
 
 ##参考
 以下のサイト、リポジトリを参考にしました。
