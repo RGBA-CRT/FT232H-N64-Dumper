@@ -22,6 +22,7 @@ Declare Function FT_GetModemStatus Lib "FTD2XX.DLL" (lngHandle As FT_HANDLE, ByR
 Declare Function FT_SetChars Lib "FTD2XX.DLL" (lngHandle As FT_HANDLE, byEventChar As Byte, byEventCharEnabled As Byte, byErrorChar As Byte, byErrorCharEnabled As Byte) As Long
 Declare Function FT_Purge Lib "FTD2XX.DLL" (lngHandle As FT_HANDLE, lngMask As Long) As Long
 Declare Function FT_SetTimeouts Lib "FTD2XX.DLL" (lngHandle As FT_HANDLE, lngReadTimeout As Long, lngWriteTimeout As Long) As Long
+Declare Function FT_SetDivisor Lib "FTD2XX.DLL" (lngHandle As FT_HANDLE, lngReadTimeout As Long) As Long
 Declare Function FT_GetQueueStatus Lib "FTD2XX.DLL" (lngHandle As FT_HANDLE, ByRef lngRxBytes As DWord) As Long
 Declare Function FT_SetBreakOn Lib "FTD2XX.DLL" (lngHandle As FT_HANDLE) As Long
 Declare Function FT_SetBreakOff Lib "FTD2XX.DLL" (lngHandle As FT_HANDLE) As Long

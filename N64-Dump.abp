@@ -1,5 +1,5 @@
 /* FT232H,MCP23S17を用いたN64吸出しプログラム [for ActiveBasic v4]
- * RGBA_CRT 2016 [rgba3crt1p@gmail.com]
+ * RGBA_CRT 2016-2017 [rgba3crt1p@gmail.com]
  *
  * reference materials：
  * 	http://n64.icequake.net/mirror/www.crazynation.org/N64/
@@ -32,7 +32,9 @@ Dim DevIdx As Long
 Dim outbuf[IO_BUFFERSIZE] As Byte,c As DWord
 Dim dwAB As DWord
 
-Print " - N64 ROM DUMPER using FT232H [TEST PROGRAM] - PROGRAMMED BY RGBA_CRT 2016/9/6"
+Dim slowMode AS BOOL
+
+Print " - N64 ROM DUMPER using FT232H [TEST PROGRAM] - PROGRAMMED BY RGBA_CRT 2017/6/20"
 Print
 
 if ListUpFTDI_Devices()<>FT_OK Then End
@@ -43,6 +45,7 @@ Input "Input device [num] > ",DevIdx
 FT_Open(DevIdx,hFT)
 if hFT=0 Then
 	Print "Could not open Device."
+	Sleep(3000)
 	End
 Else
 	Print ex"Open OK\n"
@@ -59,6 +62,7 @@ Dim romSize As DWord,op AS DWord,header AS N64_ROM_HEADER
 *ROM_INFO
 	input "[INSERT CART AND PRESS ENTER]",DevIdx
 
+	flush()
 	GetRomInfo(header)
 	if header.Title[0]=ex"\xFF" Then lstrcpy(header.Title,"[CART CONNECT ERR]")
 	PrintRomInfo(header)
@@ -66,10 +70,12 @@ Dim romSize As DWord,op AS DWord,header AS N64_ROM_HEADER
 	romSize=SloveRomSize()
 	printf(ex"[推定]ROM Size0x:%08X -> %dMB\n\n",romSize,romSize/(1024*1024))
 
+*SEL_OP
 	Print ex"[SELECT OPERATION]\n\t1.DUMP FULL ROM\n\t2.INPUT ROM SIZE AND DUMP\n\t3.SRAM DUMP [TEST]\n\t4.ROM VIEWER [UNCODEING]\n\t5.EXIT"
 	input "> ",op
 	Print
 
+	flush()
 	Select Case op
 		Case 1
 			if DumpFullRom(sprintfStr("%s.z64",header.Title),romSize)<>TRUE Then Print " [Error]":Goto *EXIT_PROGRAM
@@ -88,10 +94,61 @@ Dim romSize As DWord,op AS DWord,header AS N64_ROM_HEADER
 			Print ex"Saved sram dump As \qsram.sra\q"
 
 		Case 4
-		'	Input ex"\nAddress : ",op
-
+			'Input ex"Address : ",op
+			op=&H7f0200
+*TEST
+				memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x00\x00",7)  :	c+=7	'SlowSpeed For FlashCart
+				slowMode=TRUE
+			testDump(&H7f0000)
+			testDump(&H7f0200)
+			testDump(&H7f0400)
+			N64PowerOFF()
+		'	Input ex">\n\n\n",op
+			Goto *TEST
 		Case 5
 			Goto *EXIT_PROGRAM
+
+		Case 6
+			Print "Slow Mode Eneble"
+			memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x00\x00",7)  :	c+=7	'SlowSpeed For FlashCart
+			slowMode=TRUE
+
+		Case 7
+			'N64 flash cart test (ref:https://github.com/sanni/cartreader/blob/master/Cart_Reader/N64.ino)
+
+			Dim inbuf[N64_DUMP_BUFFER_SIZE] AS Byte,inSize AS DWord
+			flash_printID(CART_BASEADR_ROM )
+			flash_printID(CART_BASEADR_ROM + &H2000000)
+			flash_printID(CART_BASEADR_ROM + &H4000000)
+			flash_printID(CART_BASEADR_ROM + &H6000000)
+
+			Print
+			Print "CFI INFO"
+
+			'CFI READ
+			'00000055 98
+			N64_SetAddress(CART_BASEADR_ROM + (&H55 << 1)) 
+			N64_writeData(&H98)
+
+			N64_SetAddress(CART_BASEADR_ROM)
+			N64_readRequest(N64_DUMP_BUFFER_SIZE/2)
+			
+			'RESET
+			N64_SetAddress(CART_BASEADR_ROM )
+			N64_writeData(&HFF)
+
+			FTDI_SendCommand()
+			FT_Read(hFT,inbuf,N64_DUMP_BUFFER_SIZE,inSize)
+
+			Dump(inbuf,N64_DUMP_BUFFER_SIZE)
+			
+			Dim out AS File
+			out.openFile("CFI.bin",GENERIC_WRITE)
+			out.write(inbuf,N64_DUMP_BUFFER_SIZE)
+			out.close()
+
+			
+			N64PowerOFF()
 	End Select
 
 	Print ex"\n\n"
@@ -105,6 +162,78 @@ Print "END"
 'Sleep(-1)
 End
 
+Sub flash_printID(baseAdr AS DWord)
+			N64_SetAddress(baseAdr + (&H555 << 1)) 
+			N64_writeData(&HAA)
+			N64_SetAddress(baseAdr + (&H2AA << 1))
+			N64_writeData(&H55)
+			N64_SetAddress(baseAdr + (&H555 << 1))
+			N64_writeData(&H90)
+
+			  '// Read manufacturer ID
+			N64_SetAddress(baseAdr)
+			N64_readRequest(2)
+
+			'RESET
+			N64_SetAddress(baseAdr )
+			N64_writeData(&HFF)
+
+			Dim inbuf[N64_DUMP_BUFFER_SIZE] AS Byte,inSize AS DWord
+			FTDI_SendCommand()
+			FT_Read(hFT,inbuf,4,inSize)
+
+			Dump(inbuf,4,baseAdr)
+
+			Dim mfID AS Word, deviceID AS Word
+			mfID=GetWord(inbuf+0)
+			deviceID=GetWord(inbuf+2)
+			printf(ex"ManufactureID : %04X  DeviceID : %04X\n",mfID,deviceID)
+
+			'https://www.jedec.org/sites/default/files/docs/JEP106AJ.pdf
+			If mfID>>8 = &H89 Then Print "Intel"
+			Print
+End Sub
+
+Sub N64_writeData(outData AS Word)
+	N64_SetBusDir(N64_BUS_DIR_OUTPUT)		
+
+	MCP_WriteRegister(MCP23017_GPIOA,outData>>8)
+	outbuf[c]=&H82				:	c++
+	outbuf[c]=outData And &H00FF	:	c++
+	outbuf[c]=&HFF				:	c++	'ALL OUTPUT
+
+	FT_WAIT(1)
+	N64_SetCtrlPin(N64_RE)
+	FT_WAIT(15)
+	N64_SetCtrlPin(N64_WE or N64_RE)
+	FT_WAIT(4)
+End Sub
+
+Sub testDump(Adr AS DWord)
+			N64PowerON()
+			N64_SetAddress(CART_BASEADR_ROM+Adr)
+			N64_readRequest(N64_DUMP_BUFFER_SIZE/2)
+
+			Dim inbuf[N64_DUMP_BUFFER_SIZE] AS Byte,inSize AS DWord
+			FTDI_SendCommand()
+			FT_Read(hFT,inbuf,N64_DUMP_BUFFER_SIZE,inSize)
+
+			Dump(inbuf,N64_DUMP_BUFFER_SIZE/4,op)
+		'	Sleep(1000)
+	
+End Sub
+
+	Sub flush()
+		Dim ftStatus As Long,bufsize As DWord,buf As BytePtr,dwAB As DWord
+		
+		ftStatus = ftStatus or FT_GetQueueStatus(hFT, bufsize)		 ' Get the number of bytes in the FT2232H receive buffer
+		buf=calloc(bufsize)
+		if bufsize>0 then Print bufsize
+
+		if (ftStatus = FT_OK) And  (bufsize > 0) Then _
+			FT_Read(hFT, buf, bufsize, dwAB)  'Read out the data from FT2232H receive buffer
+		free(buf)
+	End Sub
 
 Const N64_DUMP_BUFFER_SIZE=&H200	'512バイトずつアドレス指定が必要なのでこれが最大
 Function DumpFullRom(fileName As BytePtr,RomSize As DWord)(BaseAddress As DWord) As Long
@@ -120,34 +249,35 @@ Function DumpFullRom(fileName As BytePtr,RomSize As DWord)(BaseAddress As DWord)
 	inbuf=calloc(N64_DUMP_BUFFER_SIZE)
 	out.openFile(fileName,GENERIC_WRITE)
 
+	flush()
+
 	N64PowerON()
 
-	N64_SetBusDir(N64_BUS_DIR_OUTPUT)
 	N64_SetAddress(BaseAddress)
-	N64_SetBusDir(N64_BUS_DIR_INPUT)
 	if FTDI_SendCommand()<>FT_OK Then Goto *DFR_EXIT
 
 	Print "dumping data..."
 	Dim time As DWord,lt As DWord
 	time=GetTickCount()
 	Do
-		N64_SetBusDir(N64_BUS_DIR_OUTPUT)
 		N64_SetAddress(reqAdr + BaseAddress)
-		N64_SetBusDir(N64_BUS_DIR_INPUT)
 		N64_readRequest(N64_DUMP_BUFFER_SIZE/2)
+
+		if FTDI_SendCommand()<>FT_OK Then Goto *DFR_EXIT
+		if FT_Read(hFT,inbuf,N64_DUMP_BUFFER_SIZE,inSize)<>FT_OK Then Goto *DFR_EXIT
+	'	flush()
+	'	Dump(inbuf,N64_DUMP_BUFFER_SIZE,reqAdr,TRUE)
+
+		out.write(inbuf,inSize)
+		reqAdr+=inSize
 
 		if reqAdr Mod &H5000 = 0 Then 
 			ConsoleReturnLine()
 			printf(ex"Address=%08X ... %d%%  [%dKB/s] [buf:%d]           ",reqAdr,(reqAdr/RomSize)*100,reqAdr/(GetTickCount()-time),c)
 			if GetKeyState(VK_ESCAPE) And &H80 Then Print ex"\n[ESC]Cancelled by user.":Goto *DFR_EXIT
 		End If
+		if reqAdr Mod &H100000 = 0 Then Sleep(200)
 
-		if FTDI_SendCommand()<>FT_OK Then Goto *DFR_EXIT
-		if FT_Read(hFT,inbuf,N64_DUMP_BUFFER_SIZE,inSize)<>FT_OK Then Goto *DFR_EXIT
-	'	Dump(inbuf,N64_DUMP_BUFFER_SIZE,reqAdr,TRUE)
-
-		out.write(inbuf,inSize)
-		reqAdr+=inSize
 		if reqAdr=>RomSize Then ExitDo
 	Loop
 	lt=GetTickCount()-time
@@ -179,18 +309,16 @@ End Function
 
 Sub GetRomInfo(ByRef header AS N64_ROM_HEADER)
 	Dim inbuf As BytePtr
-	inbuf=calloc(N64_ROM_HEADER_SIZE)
+	inbuf=calloc(512)'(N64_ROM_HEADER_SIZE)
 
 	N64PowerON()
 
-	N64_SetBusDir(N64_BUS_DIR_OUTPUT)
 	N64_SetAddress(CART_BASEADR_ROM)
-	N64_SetBusDir(N64_BUS_DIR_INPUT)
-	N64_readRequest(N64_ROM_HEADER_SIZE/2)
+	N64_readRequest(512/2)
 	if FTDI_SendCommand()<>FT_OK Then Print "Connection err.":Goto *PRI_EXIT
 
 	N64PowerOFF()
-	if FT_Read(hFT,inbuf,N64_ROM_HEADER_SIZE,dwAB)<>FT_OK Then Goto *PRI_EXIT
+	if FT_Read(hFT,inbuf,512,dwAB)<>FT_OK Then Goto *PRI_EXIT
 
 	memcpy(VarPtr(header),inbuf,sizeof(N64_ROM_HEADER))
 
@@ -229,9 +357,7 @@ Function SloveRomSize() As DWord
 	'ROMサイズの推測
 	'1MBごとにアクセスしてみてFFだらけor先頭と同じデータだったら終わってるだろうと推測
 	For i=0 To 65 Step 2
-		N64_SetBusDir(N64_BUS_DIR_OUTPUT)
 		N64_SetAddress(&H100000*i +&H10000000)
-		N64_SetBusDir(N64_BUS_DIR_INPUT)
 		N64_readRequest(N64_SIZESLOVE_SAMPLE_SIZE/2)
 		if FTDI_SendCommand()<>FT_OK Then ExitFunction
 		if FT_Read(hFT,inbuf,N64_SIZESLOVE_SAMPLE_SIZE,dwAB)<>FT_OK Then Goto *SRS_EXIT
@@ -328,16 +454,30 @@ Const SDAT_DDR_IN = &H02	'1=input
 Const SDAT_DDR_OUT= &H00
 
 Sub N64PowerON()
-	MCP_WriteRegister(MCP23017_GPIOB,RESET)
+	MCP_WriteRegister(MCP23017_GPIOB,EEP_CLK)
 	FTDI_SendCommand()
-	Sleep(3)
+	MCP_WriteRegister(MCP23017_GPIOB,RESET or EEP_CLK)
+	FTDI_SendCommand()
+	Sleep(5)
 End Sub
 
 Sub N64PowerOFF()
-	MCP_WriteRegister(MCP23017_GPIOB,N64_POWER or RESET)
+	MCP_WriteRegister(MCP23017_GPIOB,N64_POWER or EEP_CLK)
 	FTDI_SendCommand()
 	Sleep(3)
 End Sub
+/*
+Sub N64_Reset()
+	MCP_WriteRegister(MCP23017_GPIOB,EEP_CLK)
+	FTDI_SendCommand()
+	MCP_WriteRegister(MCP23017_GPIOB,RESET or EEP_CLK)
+	FTDI_SendCommand()
+End Sub
+
+Sub N64_Clock()
+	MCP_WriteRegister(MCP23017_GPIOB,0)
+	MCP_WriteRegister(MCP23017_GPIOB,EEP_CLK)
+End Sub*/
 
 'WE RE ALE_H ALE_Lの制御
 Sub N64_SetCtrlPin(newFT_GPIOA As Byte)
@@ -353,9 +493,12 @@ Sub N64_readRequest(nLoop As DWord)
 	Dim i As Long
 	For i =1 To nLoop
 		N64_SetCtrlPin(N64_WE)				'RE -> Low
+		if slowMode=TRUE Then FT_WAIT(15)
+
 		MCP_ReadRegister(MCP23017_GPIOA)	'Hibyte Request
 		outbuf[c]=&H83	:	c++				'LoByte Request
 		N64_SetCtrlPin(N64_WE or N64_RE)	'RE -> Hi
+
 	Next i
 End Sub
 
@@ -375,30 +518,58 @@ Sub N64_SetBusDir(dir As N64_BUS_DIRECTION)
 	MCP_WriteRegister(MCP23017_IODIRA,dir )
 End Sub
 
+Sub FT_WAIT(val aS Word)
+		outbuf[c]=&H9c		:	c++
+		outbuf[c]=val		:	c++
+		outbuf[c]=val>>8	:	c++
+End Sub
+
+
 Sub N64_SetAddress(adr As DWord)
 	Dim adrHi As Word,adrLo As Word
 	adrHi=adr>>16
 	adrLo=adr And &H0000FFFF
 
+	N64_SetBusDir(N64_BUS_DIR_OUTPUT)
+
+
 	'WE RE ALE_HL -> High[
-	N64_SetCtrlPin(&HF0)
+	if slowMode=TRUE Then
+	'	N64_SetCtrlPin(&H30)	'ALE_Lは遅らせないと一部カートリッジでアドレスセットに失敗する
+	'	FT_WAIT(9)
+		N64_SetCtrlPin(&Hb0)	'ALE_Lは遅らせないと一部カートリッジでアドレスセットに失敗する
+'	FT_WAIT(5)
+	Endif
+	N64_SetCtrlPin(&Hf0)
+
+'	if slowMode=TRUE Then FT_WAIT(20)
 	
-	'Set N64LoByte
+	'Set N64HiByte
 	MCP_WriteRegister(MCP23017_GPIOA,adrHi>>8)
 	outbuf[c]=&H82				:	c++
 	outbuf[c]=adrHi And &H00FF	:	c++
 	outbuf[c]=&HFF				:	c++	'ALL OUTPUT
 
+	'if slowMode=TRUE Then FT_WAIT(20)
+
 	'ALE_H -> Low
 	N64_SetCtrlPin(N64_WE or N64_RE or ALE_L)
+
+	'Set N64 Low Byte
 	MCP_WriteRegister(MCP23017_GPIOA,adrLo>>8)
 	outbuf[c]=&H82				:	c++
 	outbuf[c]=adrLo And &H00FF	:	c++
 	outbuf[c]=&HFF				:	c++	'ALL OUTPUT
 
+'	if slowMode=TRUE Then FT_WAIT(15)
+
 	'ALE_L -> Low
 	N64_SetCtrlPin(N64_WE or N64_RE)
 
+'	if slowMode=TRUE Then FT_WAIT(1500)
+
+
+	N64_SetBusDir(N64_BUS_DIR_INPUT)
 End Sub
 
 
@@ -469,7 +640,12 @@ Sub InitSPI()
 	 * [86]Set TCK Clock [0002]->10MHz
 	 */
 	 
-	memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x02\x00",7)  :	c+=7
+
+'	memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x02\x00",7)  :	c+=7	'NormalSpeed For MaskROM
+'	memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x03\x00",7)  :	c+=7	'SlowSpeed For FlashCart
+'	memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x00\x00",7)  :	c+=7	'OverSpeed
+	memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x00\x00",7)  :	c+=7	'OverSpeed
+
 	SPI_CS(1)
 End Sub
 

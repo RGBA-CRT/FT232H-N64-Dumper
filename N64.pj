@@ -1,0 +1,22 @@
+' ActiveBasic Project file.
+
+#VERSION=9
+
+#MODULETYPE=0
+
+#NAME=N64
+
+#PLATFORM=32
+
+#USEWINDOW=0
+
+#OPTION=&H00010000
+
+#OUTPUT_RELEASE=.\N64-Dump.exe
+
+#OUTPUT_DEBUG=.\N64_debug.exe
+
+#RESOURCE=0
+
+#SOURCE
+N64-Dump.abp
