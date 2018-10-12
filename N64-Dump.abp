@@ -19,8 +19,8 @@
 #include "D2XX.sbp"
 #include <RGBALib.sbp>
 
-Const IO_BUFFERSIZE=6000*2
-Const USB_BUFFER_SIZE=5504+64*3
+Const IO_BUFFERSIZE=1024*6'6000*2
+Const USB_BUFFER_SIZE=1024*6'5504+64*3
 
 Const CART_BASEADR_SRAM=&H08000000
 Const CART_BASEADR_ROM =&H10000000
@@ -34,7 +34,7 @@ Dim dwAB As DWord
 
 Dim slowMode AS BOOL
 
-Print " - N64 ROM DUMPER using FT232H [TEST PROGRAM] - PROGRAMMED BY RGBA_CRT 2017/6/20"
+Print " - N64 ROM DUMPER using FT232H [TEST PROGRAM] - PROGRAMMED BY RGBA_CRT 2018/4/4"
 Print
 
 if ListUpFTDI_Devices()<>FT_OK Then End
@@ -58,6 +58,7 @@ InitSPI()
 N64_InitPorts()
 FTDI_SendCommand()
 
+Dim SloveRomSizeReason AS BytePtr
 Dim romSize As DWord,op AS DWord,header AS N64_ROM_HEADER
 *ROM_INFO
 	input "[INSERT CART AND PRESS ENTER]",DevIdx
@@ -68,7 +69,7 @@ Dim romSize As DWord,op AS DWord,header AS N64_ROM_HEADER
 	PrintRomInfo(header)
 
 	romSize=SloveRomSize()
-	printf(ex"[推定]ROM Size0x:%08X -> %dMB\n\n",romSize,romSize/(1024*1024))
+	printf(ex"[推定]ROM Size0x:%08X -> %dMB (%s)\n\n",romSize,romSize/(1024*1024),SloveRomSizeReason)
 
 *SEL_OP
 	Print ex"[SELECT OPERATION]\n\t1.DUMP FULL ROM\n\t2.INPUT ROM SIZE AND DUMP\n\t3.SRAM DUMP [TEST]\n\t4.ROM VIEWER [UNCODEING]\n\t5.EXIT"
@@ -78,7 +79,19 @@ Dim romSize As DWord,op AS DWord,header AS N64_ROM_HEADER
 	flush()
 	Select Case op
 		Case 1
-			if DumpFullRom(sprintfStr("%s.z64",header.Title),romSize)<>TRUE Then Print " [Error]":Goto *EXIT_PROGRAM
+			Dim FileName[30] As Byte, i AS Long
+			memcpy(FileName,header.Title,20)
+			
+			'右からスペースをNULL文字で埋めル
+			For i=20 To 0 Step -1
+				if FileName[i] <> &H20 And FileName[i] <> 0 Then	
+					exitfor
+				Endif
+				FileName[i]=0
+			Next i
+			lstrcat(FileName,".z64")
+
+			if DumpFullRom(FileName,romSize)<>TRUE Then Print " [Error]":Goto *EXIT_PROGRAM
 
 		Case 2
 			Input ex"Input Dump Size (0x -> &H)\n > ",op
@@ -271,9 +284,9 @@ Function DumpFullRom(fileName As BytePtr,RomSize As DWord)(BaseAddress As DWord)
 		out.write(inbuf,inSize)
 		reqAdr+=inSize
 
-		if reqAdr Mod &H5000 = 0 Then 
+		if reqAdr Mod (&H5000*2) = 0 Then 
 			ConsoleReturnLine()
-			printf(ex"Address=%08X ... %d%%  [%dKB/s] [buf:%d]           ",reqAdr,(reqAdr/RomSize)*100,reqAdr/(GetTickCount()-time),c)
+			printf(ex"Address=%08X ... %d%%  [%dKB/s]          ",reqAdr,(reqAdr/RomSize)*100,reqAdr/(GetTickCount()-time))
 			if GetKeyState(VK_ESCAPE) And &H80 Then Print ex"\n[ESC]Cancelled by user.":Goto *DFR_EXIT
 		End If
 		if reqAdr Mod &H100000 = 0 Then Sleep(200)
@@ -359,15 +372,15 @@ Function SloveRomSize() As DWord
 	For i=0 To 65 Step 2
 		N64_SetAddress(&H100000*i +&H10000000)
 		N64_readRequest(N64_SIZESLOVE_SAMPLE_SIZE/2)
-		if FTDI_SendCommand()<>FT_OK Then ExitFunction
+		if FTDI_SendCommaftnd()<>FT_OK Then ExitFunction
 		if FT_Read(hFT,inbuf,N64_SIZESLOVE_SAMPLE_SIZE,dwAB)<>FT_OK Then Goto *SRS_EXIT
 '		Dump(inbuf,16,&H100000*i,TRUE):		Print
 
-		if isFilled(inbuf,N64_SIZESLOVE_SAMPLE_SIZE,&HFF)=TRUE Then ExitFor	'SAMPLE_SIZE分がFFで埋められていたら
+		if isFilled(inbuf,N64_SIZESLOVE_SAMPLE_SIZE,&HFF)=TRUE Then SloveRomSizeReason="fileld 0xFF":ExitFor	'SAMPLE_SIZE分がFFで埋められていたら
 		if i=0 Then
 			memcpy(header,inbuf,N64_SIZESLOVE_SAMPLE_SIZE)
 		Else
-			if compareBin(inbuf,header,N64_SIZESLOVE_SAMPLE_SIZE)=TRUE Then ExitFor	'先頭と比較
+			if compareBin(inbuf,header,N64_SIZESLOVE_SAMPLE_SIZE)=TRUE Then SloveRomSizeReason="some as header":ExitFor	'先頭と比較
 		Endif
 	Next i
 
@@ -379,6 +392,7 @@ Function SloveRomSize() As DWord
 	N64PowerOFF()
 	free(header)
 	free(inbuf )
+	if SloveRomSizeReason=NULL Then	SloveRomSizeReason="none"
 End Function
 
 
