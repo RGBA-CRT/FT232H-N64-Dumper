@@ -1,5 +1,6 @@
 /* FT232H,MCP23S17を用いたN64吸出しプログラム [for ActiveBasic v4]
  * RGBA_CRT 2016-2017 [rgba3crt1p@gmail.com]
+ * <<< 実験コード・未リファクタリング >>>>
  *
  * reference materials：
  * 	http://n64.icequake.net/mirror/www.crazynation.org/N64/
@@ -89,7 +90,14 @@ Dim romSize As DWord,op AS DWord,header AS N64_ROM_HEADER
 				Endif
 				FileName[i]=0
 			Next i
+
+			' ファイル名に使えない文字をエスケープ
+			For i=0 To 20
+				if FileName[i] = GetByte(":") Then _
+					FileName[i] = GetByte("_")
+			Next i
 			lstrcat(FileName,".z64")
+			debug
 
 			if DumpFullRom(FileName,romSize)<>TRUE Then Print " [Error]":Goto *EXIT_PROGRAM
 
@@ -107,17 +115,23 @@ Dim romSize As DWord,op AS DWord,header AS N64_ROM_HEADER
 			Print ex"Saved sram dump As \qsram.sra\q"
 
 		Case 4
-			'Input ex"Address : ",op
-			op=&H7f0200
+			Dim adrStr AS String, adr as DWord
+*TEST_ADRIN
+			Input ex"Address : ", adrStr
+			rcAsciiToInt(adrStr,VarPtr(adr),0,TRUE)
+
 *TEST
-				memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x00\x00",7)  :	c+=7	'SlowSpeed For FlashCart
-				slowMode=TRUE
-			testDump(&H7f0000)
-			testDump(&H7f0200)
-			testDump(&H7f0400)
-			N64PowerOFF()
-		'	Input ex">\n\n\n",op
-			Goto *TEST
+			testDump(adr)
+			Input ex"[0:Continue][1:Exit][2:InputAdr][3:Reload]\n> ",op
+
+			if op=0 Then 
+				adr += 128
+				Goto *TEST 
+			Elseif op=2 Then 
+				Goto *TEST_ADRIN
+			Elseif op=3 Then 
+				Goto *TEST
+			Endif
 		Case 5
 			Goto *EXIT_PROGRAM
 
@@ -154,7 +168,7 @@ Dim romSize As DWord,op AS DWord,header AS N64_ROM_HEADER
 			FT_Read(hFT,inbuf,N64_DUMP_BUFFER_SIZE,inSize)
 
 			Dump(inbuf,N64_DUMP_BUFFER_SIZE)
-			
+		
 			Dim out AS File
 			out.openFile("CFI.bin",GENERIC_WRITE)
 			out.write(inbuf,N64_DUMP_BUFFER_SIZE)
@@ -162,6 +176,10 @@ Dim romSize As DWord,op AS DWord,header AS N64_ROM_HEADER
 
 			
 			N64PowerOFF()
+
+		Case 8
+			GameSharkDump()
+
 	End Select
 
 	Print ex"\n\n"
@@ -222,31 +240,17 @@ Sub N64_writeData(outData AS Word)
 	FT_WAIT(4)
 End Sub
 
-Sub testDump(Adr AS DWord)
-			N64PowerON()
-			N64_SetAddress(CART_BASEADR_ROM+Adr)
-			N64_readRequest(N64_DUMP_BUFFER_SIZE/2)
-
-			Dim inbuf[N64_DUMP_BUFFER_SIZE] AS Byte,inSize AS DWord
-			FTDI_SendCommand()
-			FT_Read(hFT,inbuf,N64_DUMP_BUFFER_SIZE,inSize)
-
-			Dump(inbuf,N64_DUMP_BUFFER_SIZE/4,op)
-		'	Sleep(1000)
+Sub flush()
+	Dim ftStatus As Long,bufsize As DWord,buf As BytePtr,dwAB As DWord
 	
+	ftStatus = ftStatus or FT_GetQueueStatus(hFT, bufsize)		 ' Get the number of bytes in the FT2232H receive buffer
+	buf=calloc(bufsize)
+	if bufsize>0 then Print bufsize
+
+	if (ftStatus = FT_OK) And  (bufsize > 0) Then _
+		FT_Read(hFT, buf, bufsize, dwAB)  'Read out the data from FT2232H receive buffer
+	free(buf)
 End Sub
-
-	Sub flush()
-		Dim ftStatus As Long,bufsize As DWord,buf As BytePtr,dwAB As DWord
-		
-		ftStatus = ftStatus or FT_GetQueueStatus(hFT, bufsize)		 ' Get the number of bytes in the FT2232H receive buffer
-		buf=calloc(bufsize)
-		if bufsize>0 then Print bufsize
-
-		if (ftStatus = FT_OK) And  (bufsize > 0) Then _
-			FT_Read(hFT, buf, bufsize, dwAB)  'Read out the data from FT2232H receive buffer
-		free(buf)
-	End Sub
 
 Const N64_DUMP_BUFFER_SIZE=&H200	'512バイトずつアドレス指定が必要なのでこれが最大
 Function DumpFullRom(fileName As BytePtr,RomSize As DWord)(BaseAddress As DWord) As Long
@@ -260,7 +264,10 @@ Function DumpFullRom(fileName As BytePtr,RomSize As DWord)(BaseAddress As DWord)
 	Endif
 
 	inbuf=calloc(N64_DUMP_BUFFER_SIZE)
-	out.openFile(fileName,GENERIC_WRITE)
+	if out.openFile(fileName,GENERIC_WRITE) = FALSE Then
+		Print "Failed to create file."
+		ExitFunction
+	End If
 
 	flush()
 
@@ -372,7 +379,7 @@ Function SloveRomSize() As DWord
 	For i=0 To 65 Step 2
 		N64_SetAddress(&H100000*i +&H10000000)
 		N64_readRequest(N64_SIZESLOVE_SAMPLE_SIZE/2)
-		if FTDI_SendCommaftnd()<>FT_OK Then ExitFunction
+		if FTDI_SendCommand()<>FT_OK Then ExitFunction
 		if FT_Read(hFT,inbuf,N64_SIZESLOVE_SAMPLE_SIZE,dwAB)<>FT_OK Then Goto *SRS_EXIT
 '		Dump(inbuf,16,&H100000*i,TRUE):		Print
 
@@ -418,6 +425,23 @@ Sub PrintBuffer()
 	printf(ex"[output buffer : %d/%d -> %d%%]",c,IO_BUFFERSIZE,c/IO_BUFFERSIZE*100)
 End Sub
 
+
+Sub testDump(Adr AS DWord)
+	N64PowerON()
+	N64_SetAddress(N64_GS_HEADER_OFFSET + Adr)
+	N64_readRequest(128/2)
+
+	Dim inbuf[128] AS Byte,inSize AS DWord
+	FTDI_SendCommand()
+	FT_Read(hFT,inbuf,128,inSize)
+
+	Dump(inbuf,128,CART_BASEADR_ROM + Adr)
+
+	N64PowerOFF()
+'	Sleep(1000)
+	
+End Sub
+
 'http://www.zophar.net/fileuploads/2/10655uytsm/N64ops03.txt
 Const N64_ROM_HEADER_SIZE=&H40
 Type N64_ROM_HEADER
@@ -434,6 +458,84 @@ Type N64_ROM_HEADER
 	GameID[3] As Byte
 	Version As Byte
 End Type
+
+
+' ===================== GameShark, ProActionReplay Pro ========================
+Const N64_GS_BIOS_OFFSET = CART_BASEADR_ROM + &HC00000
+Const N64_GS_HEADER_OFFSET = CART_BASEADR_ROM + 0
+
+Type N64_GS_HEADER
+	Initial_Reg As Word
+	isCompress As Byte	'12h=uncomplessed 13=complessed
+	uk1[4] As Byte
+	EntryPoint As DWord
+	uk2 As DWord
+	CRC1 As DWord
+	CRC2 As DWord
+	uk3[1] As DWord
+	Title[31] As Byte
+	'<< SLOTED CART HEADER >>
+	slotedCartHeader AS N64_ROM_HEADER
+End Type
+
+Function GameSharkGetHeader(gs_header AS *N64_GS_HEADER	) AS BOOL
+	Dim inbuf[256] As Byte, inSize AS DWord
+
+	N64_SetAddress(N64_GS_HEADER_OFFSET)
+	N64_readRequest(256/2)
+	FTDI_SendCommand()
+	FT_Read(hFT, inbuf, 256, inSize)
+
+	memcpy(gs_header, inbuf, sizeof(N64_GS_HEADER))
+End Function
+
+Sub GameSharkDump()
+	Dim GsHeader AS N64_GS_HEADER
+	N64PowerON()
+
+	GameSharkGetHeader(VarPtr(GsHeader))
+	GsHeader.slotedCartHeader.uk4[0]=0
+	
+	Dim fileName[64] AS Byte
+	memcpy(fileName, GsHeader.Title, 32)
+	fileName[32]=0
+
+	printf(ex"GS-FIRMWARE: %s\nENTRY-POINT: 0x%08X\nSLOTED-GAME: %s\n", _
+		fileName, _
+		ChangeEndianDW2(GsHeader.EntryPoint), _ 
+		GsHeader.slotedCartHeader.Title _
+	)
+
+	
+	Dim i AS Long
+	For i=0 To 31
+		if fileName[i] = GetByte(":") Then fileName[i]=GetByte("_")
+	Next i
+	lstrcat(fileName, ".bin")
+
+	Dim out AS File
+	out.openFile(fileName, GENERIC_WRITE)
+	
+	printf(ex"Dumping")
+	Dim buffer[512] AS Byte, inBuf AS DWord
+	For i=0 To (256*1024/N64_DUMP_BUFFER_SIZE)-1
+		N64_SetAddress(N64_GS_BIOS_OFFSET + i*N64_DUMP_BUFFER_SIZE)
+		N64_readRequest(N64_DUMP_BUFFER_SIZE/2)
+
+		FTDI_SendCommand()
+		FT_Read(hFT,buffer,N64_DUMP_BUFFER_SIZE,inSize)
+
+		out.write(buffer, N64_DUMP_BUFFER_SIZE)
+		printf(".")
+	Next i
+
+	out.close()
+	N64PowerOFF()
+
+	printf(ex"\nDone.\nSaved to: %s\n",fileName)
+End Sub
+
+
 
 	
 
