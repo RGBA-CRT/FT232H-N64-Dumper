@@ -1,0 +1,200 @@
+
+' ===================== GameShark, ProActionReplay Pro ========================
+Const N64_GS_BIOS_OFFSET = CART_BASEADR_ROM + &HC00000
+Const N64_GS_HEADER_OFFSET = CART_BASEADR_ROM + 0
+Const GS_FLASH_ID = &H0808BFBF
+
+Type N64_GS_HEADER
+	Initial_Reg As Word
+	isCompress As Byte	'12h=uncomplessed 13=complessed
+	uk1[4] As Byte
+	EntryPoint As DWord
+	uk2 As DWord
+	CRC1 As DWord
+	CRC2 As DWord
+	uk3[1] As DWord
+	Title[31] As Byte
+	'<< SLOTED CART HEADER >>
+	slotedCartHeader AS N64_ROM_HEADER
+End Type
+
+Function GS_GetHeader(gs_header AS *N64_GS_HEADER	) AS BOOL
+	Dim inbuf[256] As Byte, inSize AS DWord
+
+	N64_SetAddress(N64_GS_HEADER_OFFSET)
+	N64_readRequest(256/2)
+	FTDI_SendCommand()
+	FT_Read(hFT, inbuf, 256, inSize)
+
+	memcpy(gs_header, inbuf, sizeof(N64_GS_HEADER))
+End Function
+
+Sub GS_Dump()
+	Dim GsHeader AS N64_GS_HEADER
+	N64PowerON()
+
+	GS_GetHeader(VarPtr(GsHeader))
+	GsHeader.slotedCartHeader.uk4[0]=0
+	
+	Dim fileName[64] AS Byte
+	memcpy(fileName, GsHeader.Title, 32)
+	fileName[32]=0
+
+	printf(ex"GS-FIRMWARE: %s\nENTRY-POINT: 0x%08X\nSLOTED-GAME: %s\n", _
+		fileName, _
+		ChangeEndianDW2(GsHeader.EntryPoint), _ 
+		GsHeader.slotedCartHeader.Title _
+	)
+
+	
+	Dim i AS Long
+	For i=0 To 31
+		if fileName[i] = GetByte(":") Then fileName[i]=GetByte("_")
+	Next i
+	lstrcat(fileName, ".bin")
+	lstrcpy(fileName, "gs-bios.bin")
+	Dim out AS File
+	out.openFile(fileName, GENERIC_WRITE)
+	
+	printf(ex"Dumping")
+	Dim buffer[512] AS Byte, inBuf AS DWord
+	For i=0 To (256*1024/N64_DUMP_BUFFER_SIZE)-1
+		N64_SetAddress(N64_GS_BIOS_OFFSET + i*N64_DUMP_BUFFER_SIZE)
+		N64_readRequest(N64_DUMP_BUFFER_SIZE/2)
+
+		FTDI_SendCommand()
+		FT_Read(hFT,buffer,N64_DUMP_BUFFER_SIZE,inSize)
+
+		out.write(buffer, N64_DUMP_BUFFER_SIZE)
+		printf(".")
+	Next i
+
+	out.close()
+	N64PowerOFF()
+
+	printf(ex"\nDone.\nSaved to: %s\n",fileName)
+End Sub
+
+Const FLASH_SHIFT = 1
+Const GS_BASE = CART_BASEADR_ROM
+
+' SST29LE010はVID=BF, DeviceId=08
+' 16bitに8bitづつ並列接続されているので0xBF 0xBF 0x08 0x08
+Function GS_GetFlashId() AS DWord
+	N64PowerON()
+
+	' A0はバイト選択（上位Flash, 下位Flashの選択）なので実際のアドレスバスには出ていない
+	N64_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT)) 
+	N64_writeData(&HAAAA)
+
+	N64_SetAddress(GS_BASE + (&H2AAA << FLASH_SHIFT))
+	N64_writeData(&H5555)
+
+	N64_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
+	N64_writeData(&H8080)
+
+	N64_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
+	N64_writeData(&HAAAA)
+
+	N64_SetAddress(GS_BASE + (&H2AAA << FLASH_SHIFT))
+	N64_writeData(&H5555)
+
+	N64_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
+	N64_writeData(&H6060)
+
+
+	' Read manufacturer ID
+	N64_SetAddress(GS_BASE)
+	N64_readRequest(2)
+
+	Dim inbuf[N64_DUMP_BUFFER_SIZE] AS Byte,inSize AS DWord
+	ZeroMemory(inbuf, N64_DUMP_BUFFER_SIZE)
+	FTDI_SendCommand()
+	FT_Read(hFT,inbuf,4,inSize)
+	
+	N64PowerOFF()
+
+	GS_RestFlash()
+
+	GS_GetFlashId = GetDWord(inbuf)
+End Function
+
+Sub GS_RestFlash()
+	N64PowerON()
+
+	' A0はバイト選択（上位Flash, 下位Flashの選択）なので実際のアドレスバスには出ていない
+	N64_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT)) 
+	N64_writeData(&HAAAA)
+
+	N64_SetAddress(GS_BASE + (&H2AAA << FLASH_SHIFT))
+	N64_writeData(&H5555)
+
+	N64_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
+	N64_writeData(&HF0F0)
+
+	FTDI_SendCommand()
+	
+	N64PowerOFF()	
+End Sub
+
+	
+Sub GS_EraseFlash() 
+	N64PowerON()
+
+	N64_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT)) 
+	N64_writeData(&HAAAA)
+
+	N64_SetAddress(GS_BASE + (&H2AAA << FLASH_SHIFT))
+	N64_writeData(&H5555)
+
+	N64_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
+	N64_writeData(&H8080)
+
+	N64_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
+	N64_writeData(&HAAAA)
+
+	N64_SetAddress(GS_BASE + (&H2AAA << FLASH_SHIFT))
+	N64_writeData(&H5555)
+
+	N64_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
+	N64_writeData(&H1010)
+
+	FTDI_SendCommand()
+	
+	' Wait TSCE ::: 20ms
+	Sleep(40)
+
+	N64PowerOFF()
+
+End Sub
+
+Const GS_PAGESIZE = 256
+Sub GS_WritePage(page AS DWord, data AS BytePtr)
+	N64_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT)) 
+	N64_writeData(&HAAAA)
+
+	N64_SetAddress(GS_BASE + (&H2AAA << FLASH_SHIFT))
+	N64_writeData(&H5555)
+
+	N64_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
+	N64_writeData(&HA0A0)
+
+	Dump(data,256, )
+
+	Dim i aS Long, writeData AS Word
+	For i=0 To GS_PAGESIZE-1 Step 2
+		' Set Write Address
+		N64_SetAddress(N64_GS_BIOS_OFFSET + page*GS_PAGESIZE + i)
+		N64_writeData( ((data[ i ] << 8) And &HFF00) Or (data[ i+1 ] And &HFF) )
+	Next i
+	
+	FTDI_SendCommand()
+
+	Sleep(20)
+
+End Sub
+
+
+Function GS_WriteFlash(buf AS BytePtr, size AS DWord) AS BOOL
+	
+End Function

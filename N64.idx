@@ -1,0 +1,8 @@
+' インデックス プログラム
+
+#strict
+
+'Win32APIの定義ファイル
+
+'プロジェクト内のプログラム ファイル
+#include "GameShark.sbp"

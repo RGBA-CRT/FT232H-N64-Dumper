@@ -20,13 +20,16 @@
 #include "D2XX.sbp"
 #include <RGBALib.sbp>
 
-Const IO_BUFFERSIZE=1024*6'6000*2
-Const USB_BUFFER_SIZE=1024*6'5504+64*3
+Const IO_BUFFERSIZE=1024*16
+Const USB_BUFFER_SIZE=1024*6
 
 Const CART_BASEADR_SRAM=&H08000000
 Const CART_BASEADR_ROM =&H10000000
 
-Const FT_USB_LATENCY=1	'1Å`254
+#include "N64.idx"
+
+' 1Å`254
+Const FT_USB_LATENCY=1
 
 Dim hFT As FT_HANDLE
 Dim DevIdx As Long
@@ -97,7 +100,7 @@ Dim romSize As DWord,op AS DWord,header AS N64_ROM_HEADER
 					FileName[i] = GetByte("_")
 			Next i
 			lstrcat(FileName,".z64")
-			debug
+
 
 			if DumpFullRom(FileName,romSize)<>TRUE Then Print " [Error]":Goto *EXIT_PROGRAM
 
@@ -178,7 +181,33 @@ Dim romSize As DWord,op AS DWord,header AS N64_ROM_HEADER
 			N64PowerOFF()
 
 		Case 8
-			GameSharkDump()
+			GS_Dump()
+
+		Case 9
+			op = 			GS_GetFlashId()
+			printf(ex"ID = %08X\n",op)
+			if op = GS_FLASH_ID Then
+				printf(ex"id match.\n")
+			Else
+				printf(ex"id unmatch.\n")
+			End If
+
+		Case 10
+			Input ex"EraseFlash(1/0)\n", op
+			if op=1 Then
+				GS_EraseFlash()
+				printf(ex"erased!\n")
+			End If
+
+		Case 11
+		
+			N64PowerON()
+			FTDI_SendCommand()
+			Sleep(10)
+			GS_WritePage(4, ex"This is GS-FLASH-WRITE test text. page4 = 1024*4=0x1000\n")
+			
+	N64PowerOFF()
+			FTDI_SendCommand()
 
 	End Select
 
@@ -459,85 +488,6 @@ Type N64_ROM_HEADER
 	Version As Byte
 End Type
 
-
-' ===================== GameShark, ProActionReplay Pro ========================
-Const N64_GS_BIOS_OFFSET = CART_BASEADR_ROM + &HC00000
-Const N64_GS_HEADER_OFFSET = CART_BASEADR_ROM + 0
-
-Type N64_GS_HEADER
-	Initial_Reg As Word
-	isCompress As Byte	'12h=uncomplessed 13=complessed
-	uk1[4] As Byte
-	EntryPoint As DWord
-	uk2 As DWord
-	CRC1 As DWord
-	CRC2 As DWord
-	uk3[1] As DWord
-	Title[31] As Byte
-	'<< SLOTED CART HEADER >>
-	slotedCartHeader AS N64_ROM_HEADER
-End Type
-
-Function GameSharkGetHeader(gs_header AS *N64_GS_HEADER	) AS BOOL
-	Dim inbuf[256] As Byte, inSize AS DWord
-
-	N64_SetAddress(N64_GS_HEADER_OFFSET)
-	N64_readRequest(256/2)
-	FTDI_SendCommand()
-	FT_Read(hFT, inbuf, 256, inSize)
-
-	memcpy(gs_header, inbuf, sizeof(N64_GS_HEADER))
-End Function
-
-Sub GameSharkDump()
-	Dim GsHeader AS N64_GS_HEADER
-	N64PowerON()
-
-	GameSharkGetHeader(VarPtr(GsHeader))
-	GsHeader.slotedCartHeader.uk4[0]=0
-	
-	Dim fileName[64] AS Byte
-	memcpy(fileName, GsHeader.Title, 32)
-	fileName[32]=0
-
-	printf(ex"GS-FIRMWARE: %s\nENTRY-POINT: 0x%08X\nSLOTED-GAME: %s\n", _
-		fileName, _
-		ChangeEndianDW2(GsHeader.EntryPoint), _ 
-		GsHeader.slotedCartHeader.Title _
-	)
-
-	
-	Dim i AS Long
-	For i=0 To 31
-		if fileName[i] = GetByte(":") Then fileName[i]=GetByte("_")
-	Next i
-	lstrcat(fileName, ".bin")
-
-	Dim out AS File
-	out.openFile(fileName, GENERIC_WRITE)
-	
-	printf(ex"Dumping")
-	Dim buffer[512] AS Byte, inBuf AS DWord
-	For i=0 To (256*1024/N64_DUMP_BUFFER_SIZE)-1
-		N64_SetAddress(N64_GS_BIOS_OFFSET + i*N64_DUMP_BUFFER_SIZE)
-		N64_readRequest(N64_DUMP_BUFFER_SIZE/2)
-
-		FTDI_SendCommand()
-		FT_Read(hFT,buffer,N64_DUMP_BUFFER_SIZE,inSize)
-
-		out.write(buffer, N64_DUMP_BUFFER_SIZE)
-		printf(".")
-	Next i
-
-	out.close()
-	N64PowerOFF()
-
-	printf(ex"\nDone.\nSaved to: %s\n",fileName)
-End Sub
-
-
-
-	
 
 '--------------------------------- N64 AREA ----------------------------------------------
 
