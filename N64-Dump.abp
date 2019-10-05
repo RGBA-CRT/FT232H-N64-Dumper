@@ -100,6 +100,7 @@ Dim romSize As DWord,op AS DWord,header AS N64_ROM_HEADER
 					FileName[i] = GetByte("_")
 			Next i
 			lstrcat(FileName,".z64")
+			lstrcpy(FileName,"testdump.z64")
 
 
 			if DumpFullRom(FileName,romSize)<>TRUE Then Print " [Error]":Goto *EXIT_PROGRAM
@@ -205,7 +206,14 @@ Dim romSize As DWord,op AS DWord,header AS N64_ROM_HEADER
 			GS_WriteFromFile(StrPtr(biosPath))
 			'GS_WriteFromFile("doc\GS\GS3.3.z64")
 			
+		Case 12
+			Print "Slow Mode Eneble"
+			memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x00\x00",7)  :	c+=7	'SlowSpeed For FlashCart
+			slowMode=TRUE
+			IntelFhash_Erase(CART_BASEADR_ROM)
 		
+		Case 13
+			IntelFhash_ChipErase(CART_BASEADR_ROM)
 	End Select
 
 	Print ex"\n\n"
@@ -218,38 +226,6 @@ FT_Close(hFT)
 Print "END"
 'Sleep(-1)
 End
-
-Sub flash_printID(baseAdr AS DWord)
-			N64_SetAddress(baseAdr + (&H555 << 1)) 
-			N64_writeData(&HAA)
-			N64_SetAddress(baseAdr + (&H2AA << 1))
-			N64_writeData(&H55)
-			N64_SetAddress(baseAdr + (&H555 << 1))
-			N64_writeData(&H90)
-
-			  '// Read manufacturer ID
-			N64_SetAddress(baseAdr)
-			N64_readRequest(2)
-
-			'RESET
-			N64_SetAddress(baseAdr )
-			N64_writeData(&HFF)
-
-			Dim inbuf[N64_DUMP_BUFFER_SIZE] AS Byte,inSize AS DWord
-			FTDI_SendCommand()
-			FT_Read(hFT,inbuf,4,inSize)
-
-			Dump(inbuf,4,baseAdr)
-
-			Dim mfID AS Word, deviceID AS Word
-			mfID=GetWord(inbuf+0)
-			deviceID=GetWord(inbuf+2)
-			printf(ex"ManufactureID : %04X  DeviceID : %04X\n",mfID,deviceID)
-
-			'https://www.jedec.org/sites/default/files/docs/JEP106AJ.pdf
-			If mfID>>8 = &H89 Then Print "Intel"
-			Print
-End Sub
 
 Sub N64_writeData(outData AS Word)
 	N64_SetBusDir(N64_BUS_DIR_OUTPUT)		
@@ -598,8 +574,8 @@ Sub N64_SetAddress(adr As DWord)
 
 	'WE RE ALE_HL -> High[
 	if slowMode=TRUE Then
-	'	N64_SetCtrlPin(&H30)	'ALE_Lは遅らせないと一部カートリッジでアドレスセットに失敗する
-	'	FT_WAIT(9)
+		N64_SetCtrlPin(&H30)	'ALE_Lは遅らせないと一部カートリッジでアドレスセットに失敗する
+		FT_WAIT(9)
 		N64_SetCtrlPin(&Hb0)	'ALE_Lは遅らせないと一部カートリッジでアドレスセットに失敗する
 '	FT_WAIT(5)
 	Endif

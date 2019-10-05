@@ -52,7 +52,7 @@ Sub GS_Dump()
 		if fileName[i] = GetByte(":") Then fileName[i]=GetByte("_")
 	Next i
 	lstrcat(fileName, ".bin")
-	lstrcpy(fileName, "gs-bios.bin")
+'	lstrcpy(fileName, "gs-bios.bin")
 	Dim out AS File
 	out.openFile(fileName, GENERIC_WRITE)
 	

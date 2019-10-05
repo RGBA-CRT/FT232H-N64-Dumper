@@ -6,3 +6,4 @@
 
 'プロジェクト内のプログラム ファイル
 #include "GameShark.sbp"
+#include "FlashCart.sbp"
