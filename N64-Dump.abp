@@ -20,7 +20,7 @@
 #include "D2XX.sbp"
 #include <RGBALib.sbp>
 
-Const IO_BUFFERSIZE=1024*16
+Const IO_BUFFERSIZE=1024*32
 Const USB_BUFFER_SIZE=1024*6
 
 Const CART_BASEADR_SRAM=&H08000000
@@ -210,10 +210,32 @@ Dim romSize As DWord,op AS DWord,header AS N64_ROM_HEADER
 			Print "Slow Mode Eneble"
 			memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x00\x00",7)  :	c+=7	'SlowSpeed For FlashCart
 			slowMode=TRUE
-			IntelFhash_Erase(CART_BASEADR_ROM)
+			IntelFhash_Erase(CART_BASEADR_ROM + 0)
+			IntelFhash_Erase(CART_BASEADR_ROM + &H2000000)
 		
 		Case 13
+			Print "Slow Mode Eneble"
+			memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x00\x00",7)  :	c+=7	'SlowSpeed For FlashCart
+			slowMode=TRUE
+			N64PowerON()
 			IntelFhash_ChipErase(CART_BASEADR_ROM)
+			IntelFhash_ChipErase(CART_BASEADR_ROM + &H2000000)
+			N64PowerOFF()
+
+		Case 14 
+			Print "Slow Mode Eneble"
+			memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x00\x00",7)  :	c+=7	'SlowSpeed For FlashCart
+			slowMode=TRUE
+			N64PowerON()
+			IntelFhash_Reset(CART_BASEADR_ROM)
+			IntelFhash_Reset(CART_BASEADR_ROM + &H200000)
+			N64PowerOFF()
+
+		Case 15
+			Print "Slow Mode Eneble"
+			memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x00\x00",7)  :	c+=7	'SlowSpeed For FlashCart
+			slowMode=TRUE
+			IntelFhash_WriteFile(CART_BASEADR_ROM, "H:\My-File\ROM\patch\Zelda64DawnDusk\6202\Zelda_DawnDusk(J).n64")
 	End Select
 
 	Print ex"\n\n"

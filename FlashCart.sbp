@@ -11,17 +11,17 @@ Sub flash_printID(baseAdr AS DWord)
 
 			  '' Read manufacturer ID
 			N64_SetAddress(baseAdr)
-			N64_readRequest(2)
+			N64_readRequest(&H110/2)
 
 			'RESET
 			N64_SetAddress(baseAdr )
 			N64_writeData(&HFF)
 
-			Dim inbuf[N64_DUMP_BUFFER_SIZE] AS Byte,inSize AS DWord
+			Dim inbuf[&H110] AS Byte,inSize AS DWord
 			FTDI_SendCommand()
-			FT_Read(hFT,inbuf,4,inSize)
+			FT_Read(hFT,inbuf,&H110,inSize)
 
-			Dump(inbuf,4,baseAdr)
+			Dump(inbuf,&H110,baseAdr)
 
 			Dim mfID AS Word, deviceID AS Word
 			mfID=GetWord(inbuf+0)
@@ -33,9 +33,38 @@ Sub flash_printID(baseAdr AS DWord)
 			Print
 End Sub
 
+Function IntelFlash_WaitWritable(baseAddr AS DWord) AS BOOL
+	Dim retry AS DWord, status As DWord
+	Do 
+		N64_SetAddress(baseAddr)
+		FTDI_SendCommand()
+		N64_readRequest(1)
+		FTDI_SendCommand()
+
+		FT_Read(hFT,VarPtr(status),2,inSize)
+
+		'printf(ex"\t\t\t\tStatus = %08X, %d \n", status, retry)
+		if status And &H8000 Then _
+			ExitDo
+
+		retry++
+	Loop
+
+	if status And &H0200 Then _
+		printf(ex"[Error][FlashStatusCheck] Device Protect Error\n")
+
+	if status And &H0800 Then _
+		printf(ex"[Error][FlashStatusCheck] Program Error\n")
+
+	if status And &H1000 Then _
+		printf(ex"[Error][FlashStatusCheck] Vpp Range Error\n")
+End Function
+
 ' ChipErase‚Í•·‚©‚È‚©‚Á‚½
 Sub IntelFhash_ChipErase(baseAdr AS DWord)
 	
+	N64PowerON()
+	IntelFhash_Reset(baseAdr)
 	N64_SetAddress(baseAdr + (&H555 << 1)) 
 	N64_writeData(&HAA)
 	N64_SetAddress(baseAdr + (&H2AA << 1))
@@ -51,19 +80,11 @@ Sub IntelFhash_ChipErase(baseAdr AS DWord)
 	
 	FTDI_SendCommand()
 
-	Dim status AS Word,inSize AS DWord
-	Do 
-		N64_SetAddress(baseAdr)
-		N64_readRequest(1)
+	IntelFlash_WaitWritable(baseAdr)
+	Print
 
-		FTDI_SendCommand()
-		FT_Read(hFT,VarPtr(status),2,inSize)
-
-		printf(ex"Status = %08X\n", status)
-		if status And &H0080 Then
-			ExitDo
-		End If
-	Loop
+	IntelFhash_Reset(baseAdr)
+	N64PowerOFF()
 End Sub
 
 Sub IntelFhash_Reset(baseAdr AS DWord)
@@ -71,17 +92,21 @@ Sub IntelFhash_Reset(baseAdr AS DWord)
 	N64_writeData(&HFF)
 End Sub
 
+'http://www.mipsasoft.com/MS7/Hardware/FLASH/StrataFlash%20P30-T%20Data%20Sheet.pdf
 Sub IntelFhash_Erase(baseAdr AS DWord)
+	
+	N64PowerON()
+
 	IntelFhash_Reset(baseAdr)
 	FTDI_SendCommand()
 
 	Dim status AS DWord,inSize AS DWord, retry AS DWord
-	Dim currBlock AS DWord
-
+	Dim currBlock AS DWord, lastBlock AS DWord
+	lastBlock = &H1FFFFFF
 
 	' Erase 4 blocks with 16kwords each
 	For currBlock = 0 To &H20000 Step &H8000
-		printf(ex"block: %08Xh- \n", currBlock)
+		printf(ex"16kword block: %08Xh- \r", baseAdr + currBlock)
 
 	    ' Unlock block command
 	    N64_SetAddress(baseAdr + currBlock)
@@ -97,21 +122,104 @@ Sub IntelFhash_Erase(baseAdr AS DWord)
 	    N64_SetAddress(baseAdr + currBlock)
 	    N64_writeData(&HD0)
 		FTDI_SendCommand()
-		Do 
-			N64_SetAddress(baseAdr + currBlock)
-			FTDI_SendCommand()
-			N64_readRequest(1)
-			FTDI_SendCommand()
 
-			FT_Read(hFT,VarPtr(status),2,inSize)
+		IntelFlash_WaitWritable(baseAdr + currBlock)
+		
+		printf(ex"\n")
+	Next currBlock
 
-			printf(ex"Status = %08X, %d\r", status, retry)
-			if status And &H0080 Then _
-				ExitDo
 
-			retry++
-		Loop
+  ' Erase up to 255 blocks with 64kwords each
+	For currBlock = &H20000 To lastBlock Step &H20000
+		printf(ex"64kword block: %08Xh- %d%% \r",  baseAdr + currBlock, (currBlock*100)/lastBlock)
+		' Unlock block command
+		N64_SetAddress(baseAdr + currBlock)
+		N64_writeData(&H60)
+		N64_SetAddress(baseAdr + currBlock)
+		N64_writeData(&HD0)
+
+		' Erase command
+		N64_SetAddress(baseAdr + currBlock)
+		N64_writeData(&H20)
+		N64_SetAddress(baseAdr + currBlock)
+		N64_writeData(&HD0)
+		FTDI_SendCommand()
+
+		IntelFlash_WaitWritable(baseAdr + currBlock)
+	
+		printf(ex"\n")	
 	Next currBlock
 
 	IntelFhash_Reset(baseAdr)
+	N64PowerOFF()
+
+End Sub
+
+
+Sub IntelFhash_WriteFile(baseAdr As DWord, fileName AS BytePtr)
+
+	N64PowerON()
+
+	Const IF_WRITE_PAGE_SIZE = 64
+	Dim in AS File, fileSize AS DWord
+	if in.openFile(fileName, GENERIC_READ)=FALSE Then
+		Print "Open Err"
+		ExitSub
+	End If
+	fileSize = in.length()
+
+	Dim buf[IF_WRITE_PAGE_SIZE] AS Byte
+	Dim totalBytes AS DWord, i AS DWord
+
+	For totalBytes = 0 To fileSize-1 Step 64
+		in.read(buf, IF_WRITE_PAGE_SIZE)
+		'Dump(buf, 64, totalBytes + baseAdr)
+		
+		if (totalBytes Mod 16384) = 0 Then _
+			printf(ex"[WriteIntelFlash] %Xh- %dMB/%dMB %d%% \n", _
+				baseAdr + totalBytes, _
+				totalBytes/(1024*1024), _
+				fileSize/(1024*1024), _
+				totalBytes*100/fileSize
+			)
+
+		' Buffered program command		
+		N64_SetAddress(baseAdr + totalBytes)
+		N64_writeData(&HE8)
+		FTDI_SendCommand()
+
+		'Check Status register
+		IntelFlash_WaitWritable(baseAdr + totalBytes)
+
+		' Write word count (minus 1)
+        N64_SetAddress(baseAdr + totalBytes)
+        N64_writeData(&H1F)
+
+		FTDI_SendCommand()
+
+		For i=0 To IF_WRITE_PAGE_SIZE-1	Step 2
+		'	printf(ex"\t%08X :: %04X\n", baseAdr + totalBytes + i,  ((buf[ i ] << 8) And &HFF00) Or (buf[ i+1 ] And &HFF))
+			N64_SetAddress(baseAdr + totalBytes + i)
+			N64_writeData( ((buf[ i ] << 8) And &HFF00) Or (buf[ i+1 ] And &HFF) )
+		Next i
+
+		FTDI_SendCommand()
+
+		N64_SetAddress(baseAdr + totalBytes + 62)
+		N64_writeData(&HD0)
+
+		IntelFlash_WaitWritable(baseAdr + totalBytes + 62)
+
+'		printf(ex"\n")
+'		ExitFor
+
+	Next totalBytes
+
+	IntelFhash_Reset(baseAdr)
+	FTDI_SendCommand()
+	in.close()
+	
+
+	N64PowerOFF()
+	FTDI_SendCommand()
 End Sub
