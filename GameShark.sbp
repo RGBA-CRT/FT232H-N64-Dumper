@@ -179,7 +179,7 @@ Sub GS_WritePage(page AS DWord, data AS BytePtr)
 	N64_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
 	N64_writeData(&HA0A0)
 
-	Dump(data,256, )
+'	Dump(data,256, )
 
 	Dim i aS Long, writeData AS Word
 	For i=0 To GS_PAGESIZE-1 Step 2
@@ -196,5 +196,42 @@ End Sub
 
 
 Function GS_WriteFlash(buf AS BytePtr, size AS DWord) AS BOOL
+	Dim i AS Long
+	Dim nBank AS Long
+
+	nBank = size / GS_PAGESIZE
+	For i = 0 To nBank-1
+		printf(ex"[GS-WRITE] %d/%d %d%% \r", i, nBank, i*100/nBank)
+		GS_WritePage(i, buf + GS_PAGESIZE*i)
+	Next i
+	printf(ex"\n\n")
+End Function
+
+
+Function GS_WriteFromFile(filename AS BytePtr) AS BOOL
+	Dim in AS File, buf AS BytePtr
+
+	if in.openFile(filename, GENERIC_READ) = FALSE Then
+		GS_WriteFromFile = FALSE
+		ExitFunction
+	Endif
+
+	GS_EraseFlash() 
 	
+	buf = calloc( in.length() )
+	in.read( buf, in.length() )
+
+	N64PowerON()
+	FTDI_SendCommand()
+	Sleep(10)
+
+	GS_WriteFlash( buf, in.length() )
+				
+	N64PowerOFF()
+	FTDI_SendCommand()
+	
+	in.close()
+	free(buf)
+
+
 End Function

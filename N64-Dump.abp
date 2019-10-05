@@ -200,15 +200,12 @@ Dim romSize As DWord,op AS DWord,header AS N64_ROM_HEADER
 			End If
 
 		Case 11
-		
-			N64PowerON()
-			FTDI_SendCommand()
-			Sleep(10)
-			GS_WritePage(4, ex"This is GS-FLASH-WRITE test text. page4 = 1024*4=0x1000\n")
+			Dim biosPath AS String
+			input "bios path> ", biosPath
+			GS_WriteFromFile(StrPtr(biosPath))
+			'GS_WriteFromFile("doc\GS\GS3.3.z64")
 			
-	N64PowerOFF()
-			FTDI_SendCommand()
-
+		
 	End Select
 
 	Print ex"\n\n"
