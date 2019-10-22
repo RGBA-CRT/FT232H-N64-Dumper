@@ -140,9 +140,7 @@ Dim romSize As DWord,op AS DWord,header AS N64_ROM_HEADER
 			Goto *EXIT_PROGRAM
 
 		Case 6
-			Print "Slow Mode Eneble"
-			memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x00\x00",7)  :	c+=7	'SlowSpeed For FlashCart
-			slowMode=TRUE
+			EnterSlowMode()
 
 		Case 7
 			'N64 flash cart test (ref:https://github.com/sanni/cartreader/blob/master/Cart_Reader/N64.ino)
@@ -164,6 +162,9 @@ Dim romSize As DWord,op AS DWord,header AS N64_ROM_HEADER
 			N64_SetAddress(CART_BASEADR_ROM)
 			N64_readRequest(N64_DUMP_BUFFER_SIZE/2)
 			
+			N64_SetAddress(CART_BASEADR_ROM+N64_DUMP_BUFFER_SIZE)
+			N64_readRequest(N64_DUMP_BUFFER_SIZE/2)
+			
 			'RESET
 			N64_SetAddress(CART_BASEADR_ROM )
 			N64_writeData(&HFF)
@@ -172,6 +173,10 @@ Dim romSize As DWord,op AS DWord,header AS N64_ROM_HEADER
 			FT_Read(hFT,inbuf,N64_DUMP_BUFFER_SIZE,inSize)
 
 			Dump(inbuf,N64_DUMP_BUFFER_SIZE)
+
+			FT_Read(hFT,inbuf,N64_DUMP_BUFFER_SIZE,inSize)
+
+			Dump(inbuf,N64_DUMP_BUFFER_SIZE,N64_DUMP_BUFFER_SIZE)
 		
 			Dim out AS File
 			out.openFile("CFI.bin",GENERIC_WRITE)
@@ -207,35 +212,49 @@ Dim romSize As DWord,op AS DWord,header AS N64_ROM_HEADER
 			'GS_WriteFromFile("doc\GS\GS3.3.z64")
 			
 		Case 12
-			Print "Slow Mode Eneble"
-			memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x00\x00",7)  :	c+=7	'SlowSpeed For FlashCart
-			slowMode=TRUE
+			EnterSlowMode()
 			IntelFhash_Erase(CART_BASEADR_ROM + 0)
 			IntelFhash_Erase(CART_BASEADR_ROM + &H2000000)
 		
 		Case 13
-			Print "Slow Mode Eneble"
-			memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x00\x00",7)  :	c+=7	'SlowSpeed For FlashCart
-			slowMode=TRUE
+			EnterSlowMode()
 			N64PowerON()
 			IntelFhash_ChipErase(CART_BASEADR_ROM)
 			IntelFhash_ChipErase(CART_BASEADR_ROM + &H2000000)
 			N64PowerOFF()
 
 		Case 14 
-			Print "Slow Mode Eneble"
-			memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x00\x00",7)  :	c+=7	'SlowSpeed For FlashCart
-			slowMode=TRUE
+			EnterSlowMode()
 			N64PowerON()
 			IntelFhash_Reset(CART_BASEADR_ROM)
-			IntelFhash_Reset(CART_BASEADR_ROM + &H200000)
+			IntelFhash_Reset(CART_BASEADR_ROM + &H2000000)
 			N64PowerOFF()
 
 		Case 15
-			Print "Slow Mode Eneble"
-			memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x00\x00",7)  :	c+=7	'SlowSpeed For FlashCart
-			slowMode=TRUE
-			IntelFhash_WriteFile(CART_BASEADR_ROM, "H:\My-File\ROM\patch\Zelda64DawnDusk\6202\Zelda_DawnDusk(J).n64")
+			EnterSlowMode()
+
+			Input ex"[WRITE] path> : ", adrStr
+			IntelFhash_WriteFile(CART_BASEADR_ROM, adrStr)
+
+
+		Case 20
+			N64PowerON()
+
+		Case 21
+			N64PowerOFF()
+
+		Case 31
+			EnterSlowMode()
+			N64PowerON()
+			IntelFhash_Erase(CART_BASEADR_ROM + 0)
+			N64PowerOFF()
+
+		Case 32
+			EnterSlowMode()
+			N64PowerON()
+			IntelFhash_Erase(CART_BASEADR_ROM + &H2000000)
+			N64PowerOFF()
+
 	End Select
 
 	Print ex"\n\n"
@@ -248,6 +267,13 @@ FT_Close(hFT)
 Print "END"
 'Sleep(-1)
 End
+
+Sub EnterSlowMode()
+
+			Print "Slow Mode Eneble"
+			memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x00\x00",7)  :	c+=7	'SlowSpeed For FlashCart
+			slowMode=TRUE
+End Sub
 
 Sub N64_writeData(outData AS Word)
 	N64_SetBusDir(N64_BUS_DIR_OUTPUT)		
