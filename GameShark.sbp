@@ -34,7 +34,7 @@ Sub GS_Dump()
 	N64PowerON()
 
 	GS_GetHeader(VarPtr(GsHeader))
-	GsHeader.slotedCartHeader.uk4[0]=0
+	GsHeader.slotedCartHeader.Raw.uk4[0]=0
 	
 	Dim fileName[64] AS Byte
 	memcpy(fileName, GsHeader.Title, 32)

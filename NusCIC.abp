@@ -1,0 +1,63 @@
+'CIC
+Const N64_BOOT_START = CART_BASEADR_ROM + &H00000040
+Const HASH_START = &H000005C0 ' N64 Boot Code Å`
+Const HASH_SIZE  = &H00000040
+
+Enum NUS_CIC_TYPE
+	NUS_CIC_6101,
+	NUS_CIC_6102,
+	NUS_CIC_6103,
+	NUS_CIC_6105,
+	NUS_CIC_6106,
+	NUS_CIC_UNKNOWN
+	NUS_CIC_COUNT
+End Enum
+
+Dim CicHashTable[NUS_CIC_COUNT] = [
+    &HC3EAFB0F, /* 6101.bin */
+    &H0E03B22D, /* 6102.bin */
+    &HBBC704B7, /* 6103.bin */
+    &HFD575A13, /* 6105.bin */
+    &H30A3CE55, /* 6106.bin */
+	&HFFFFFFFF
+] AS DWord
+
+
+Dim CicLabelTable[NUS_CIC_COUNT] = [
+	"NUS-CIC-6101",
+	"NUS-CIC-6102",
+	"NUS-CIC-6103",
+	"NUS-CIC-6105",
+	"NUS-CIC-6106",
+	"UNKNOWN CIC",
+	"NUS-CIC-NULL",
+] AS BytePtr
+
+
+Function N64_JudgeCicType(data As BytePtr, length AS DWord) AS Long
+	if length <> HASH_SIZE Then ExitFunction
+
+	Dim bootHash AS DWord
+	bootHash = crc32.GetHash(data, HASH_SIZE)
+
+	Dim i AS Long
+	N64_JudgeCicType = NUS_CIC_UNKNOWN
+	For i = 0 To NUS_CIC_COUNT
+		if bootHash = CicHashTable[i] Then N64_JudgeCicType = i
+	Next i
+
+	ExitFunction
+End Function
+
+Function N64_GetCicType(hFT AS HANDLE) AS Long
+	N64_SetAddress(N64_BOOT_START + HASH_START)
+	N64_readRequest(HASH_SIZE/2)
+
+	Dim inbuf[HASH_SIZE] AS Byte,inSize AS DWord
+	FTDI_SendCommand()
+	FT_Read(hFT,inbuf,HASH_SIZE,inSize)
+
+	'Dump(inbuf, inSize)
+
+	N64_GetCicType = N64_JudgeCicType(inbuf, inSize) 
+End Function
