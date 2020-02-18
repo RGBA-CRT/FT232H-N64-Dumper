@@ -34,7 +34,7 @@ Sub flash_printID(baseAdr AS DWord)
 End Sub
 
 Function IntelFlash_WaitWritable(baseAddr AS DWord) AS BOOL
-	Dim retry AS DWord, status As DWord
+	Dim retry AS DWord, status As DWord, inSize AS DWord
 	Do 
 		N64_SetAddress(baseAddr)
 		FTDI_SendCommand()
@@ -222,4 +222,51 @@ Sub IntelFhash_WriteFile(baseAdr As DWord, fileName AS BytePtr)
 
 	N64PowerOFF()
 	FTDI_SendCommand()
+End Sub
+
+Sub ReadCFI()
+	
+				'N64 flash cart test (ref:https://github.com/sanni/cartreader/blob/master/Cart_Reader/N64.ino)
+
+				Dim inbuf[N64_DUMP_BUFFER_SIZE] AS Byte,inSize AS DWord
+				flash_printID(CART_BASEADR_ROM )
+				flash_printID(CART_BASEADR_ROM + &H2000000)
+				flash_printID(CART_BASEADR_ROM + &H4000000)
+				flash_printID(CART_BASEADR_ROM + &H6000000)
+
+				Print
+				Print "CFI INFO"
+
+				'CFI READ
+				'00000055 98
+				N64_SetAddress(CART_BASEADR_ROM + (&H55 << 1)) 
+				N64_writeData(&H98)
+
+				N64_SetAddress(CART_BASEADR_ROM)
+				N64_readRequest(N64_DUMP_BUFFER_SIZE/2)
+				
+				N64_SetAddress(CART_BASEADR_ROM+N64_DUMP_BUFFER_SIZE)
+				N64_readRequest(N64_DUMP_BUFFER_SIZE/2)
+				
+				'RESET
+				N64_SetAddress(CART_BASEADR_ROM )
+				N64_writeData(&HFF)
+
+				FTDI_SendCommand()
+				FT_Read(hFT,inbuf,N64_DUMP_BUFFER_SIZE,inSize)
+
+				Dump(inbuf,N64_DUMP_BUFFER_SIZE)
+
+				FT_Read(hFT,inbuf,N64_DUMP_BUFFER_SIZE,inSize)
+
+				Dump(inbuf,N64_DUMP_BUFFER_SIZE,N64_DUMP_BUFFER_SIZE)
+			
+				Dim out AS File
+				out.openFile("CFI.bin",GENERIC_WRITE)
+				out.write(inbuf,N64_DUMP_BUFFER_SIZE)
+				out.close()
+
+				
+				N64PowerOFF()
+
 End Sub

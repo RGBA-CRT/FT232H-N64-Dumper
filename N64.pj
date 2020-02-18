@@ -24,3 +24,5 @@ GameShark.sbp
 FlashCart.sbp
 crc32.sbp
 NusCIC.abp
+N64_HAL.sbp
+BoardDriver.sbp

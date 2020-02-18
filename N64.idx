@@ -9,3 +9,5 @@
 #include "FlashCart.sbp"
 #include "crc32.sbp"
 #include "NusCIC.abp"
+#include "N64_HAL.sbp"
+#include "BoardDriver.sbp"

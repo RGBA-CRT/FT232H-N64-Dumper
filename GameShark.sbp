@@ -57,7 +57,7 @@ Sub GS_Dump()
 	out.openFile(fileName, GENERIC_WRITE)
 	
 	printf(ex"Dumping")
-	Dim buffer[512] AS Byte, inBuf AS DWord
+	Dim buffer[512] AS Byte, inBuf AS DWord, inSize AS DWord
 	For i=0 To (256*1024/N64_DUMP_BUFFER_SIZE)-1
 		N64_SetAddress(N64_GS_BIOS_OFFSET + i*N64_DUMP_BUFFER_SIZE)
 		N64_readRequest(N64_DUMP_BUFFER_SIZE/2)
