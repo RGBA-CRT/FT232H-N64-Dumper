@@ -1,22 +1,22 @@
 '--------------------------------- N64 AREA ----------------------------------------------
 
-Sub N64_InitPorts()
+Sub NUS_InitPorts()
 	MCP_WriteRegister(MCP23017_GPPUA,&HFF)	'GPIO-A pullup Enable
 	MCP_WriteRegister(MCP23017_GPPUB,&HFF)	'GPIO-B pullup Enable
 
-	FTDI_GPIOA=N64_WE or N64_RE	'コントロールpin
-	N64_SetCtrlPin(FTDI_GPIOA)
+	FTDI_GPIOA=NUS_WE or NUS_RE	'コントロールpin
+	NUS_SetCtrlPin(FTDI_GPIOA)
 	MCP_WriteRegister(MCP23017_IODIRB,SDAT_DDR_IN)
 	N64PowerOFF()
 End Sub
 
 'FT232H-GPIOA
-'[SCL][SDO][SDI][CS][N64_WR][N64_RD][ALE_L][ALE_H]
+'[SCL][SDO][SDI][CS][NUS_WR][NUS_RD][ALE_L][ALE_H]
 '0x80コマンドを使用するときは下位4ビットのSPI系に迷惑をかけないようにする。
 Dim FTDI_GPIOA As Byte
 Const FTDI_GPIOA_DDR = &HFB
-Const N64_WE=&H10
-Const N64_RE=&H20
+Const NUS_WE=&H10
+Const NUS_RE=&H20
 Const ALE_L =&H40
 Const ALE_H =&H80
 
@@ -24,7 +24,7 @@ Const ALE_H =&H80
 Const EEP_CLK=&H01
 Const EEP_DAT=&H02	'SDAT
 Const RESET = &H04
-Const N64_POWER=&H08
+Const NUS_POWER=&H08
 Const SDAT_DDR_IN = &H02	'1=input
 Const SDAT_DDR_OUT= &H00
 
@@ -37,26 +37,26 @@ Sub N64PowerON()
 End Sub
 
 Sub N64PowerOFF()
-	MCP_WriteRegister(MCP23017_GPIOB,N64_POWER or EEP_CLK)
+	MCP_WriteRegister(MCP23017_GPIOB,NUS_POWER or EEP_CLK)
 	FTDI_SendCommand()
 	Sleep(3)
 End Sub
 /*
-Sub N64_Reset()
+Sub NUS_Reset()
 	MCP_WriteRegister(MCP23017_GPIOB,EEP_CLK)
 	FTDI_SendCommand()
 	MCP_WriteRegister(MCP23017_GPIOB,RESET or EEP_CLK)
 	FTDI_SendCommand()
 End Sub
 
-Sub N64_Clock()
+Sub NUS_Clock()
 	MCP_WriteRegister(MCP23017_GPIOB,0)
 	MCP_WriteRegister(MCP23017_GPIOB,EEP_CLK)
 End Sub*/
 
 'WE RE ALE_H ALE_Lの制御
-Sub N64_SetCtrlPin(newFT_GPIOA As Byte)
-	if FTDI_GPIOA And N64_WE =0 Then debug
+Sub NUS_SetCtrlPin(newFT_GPIOA As Byte)
+	if FTDI_GPIOA And NUS_WE =0 Then debug
 	'Set N64 control pin
 	FTDI_GPIOA=(FTDI_GPIOA And &H0F) or (newFT_GPIOA And &HF0)
 	outbuf[c]=&H80				:	c++
@@ -64,27 +64,27 @@ Sub N64_SetCtrlPin(newFT_GPIOA As Byte)
 	outbuf[c]=FTDI_GPIOA_DDR	:	c++		'(Out:1 , input:0)
 End Sub
 
-Sub N64_readRequest(nLoop As DWord)
+Sub NUS_readRequest(nLoop As DWord)
 	Dim i As Long
 	For i =1 To nLoop
-		N64_SetCtrlPin(N64_WE)				'RE -> Low
+		NUS_SetCtrlPin(NUS_WE)				'RE -> Low
 		if slowMode=TRUE Then FT_WAIT(15)
 
 		MCP_ReadRegister(MCP23017_GPIOA)	'Hibyte Request
 		outbuf[c]=&H83	:	c++				'LoByte Request
-		N64_SetCtrlPin(N64_WE or N64_RE)	'RE -> Hi
+		NUS_SetCtrlPin(NUS_WE or NUS_RE)	'RE -> Hi
 
 	Next i
 End Sub
 
-Enum N64_BUS_DIRECTION
-	N64_BUS_DIR_INPUT  = &HFF
-	N64_BUS_DIR_OUTPUT = &H00
+Enum NUS_BUS_DIRECTION
+	NUS_BUS_DIR_INPUT  = &HFF
+	NUS_BUS_DIR_OUTPUT = &H00
 End Enum
 
-Sub N64_SetBusDir(dir As N64_BUS_DIRECTION)
+Sub NUS_SetBusDir(dir As NUS_BUS_DIRECTION)
 	'ACBusの方向設定(1でOutput)
-	if dir=N64_BUS_DIR_INPUT Then
+	if dir=NUS_BUS_DIR_INPUT Then
 		outbuf[c]=&H82				:	c++
 		outbuf[c]=00				:	c++
 		outbuf[c]=NOT(dir) And &HFF	:	c++
@@ -94,22 +94,22 @@ Sub N64_SetBusDir(dir As N64_BUS_DIRECTION)
 End Sub
 
 
-Sub N64_SetAddress(adr As DWord)
+Sub NUS_SetAddress(adr As DWord)
 	Dim adrHi As Word,adrLo As Word
 	adrHi=adr>>16
 	adrLo=adr And &H0000FFFF
 
-	N64_SetBusDir(N64_BUS_DIR_OUTPUT)
+	NUS_SetBusDir(NUS_BUS_DIR_OUTPUT)
 
 
 	'WE RE ALE_HL -> High[
 	if slowMode=TRUE Then
-		N64_SetCtrlPin(&H30)	'ALE_Lは遅らせないと一部カートリッジでアドレスセットに失敗する
+		NUS_SetCtrlPin(&H30)	'ALE_Lは遅らせないと一部カートリッジでアドレスセットに失敗する
 		FT_WAIT(9)
-		N64_SetCtrlPin(&Hb0)	'ALE_Lは遅らせないと一部カートリッジでアドレスセットに失敗する
+		NUS_SetCtrlPin(&Hb0)	'ALE_Lは遅らせないと一部カートリッジでアドレスセットに失敗する
 '	FT_WAIT(5)
 	Endif
-	N64_SetCtrlPin(&Hf0)
+	NUS_SetCtrlPin(&Hf0)
 
 '	if slowMode=TRUE Then FT_WAIT(20)
 	
@@ -122,7 +122,7 @@ Sub N64_SetAddress(adr As DWord)
 	'if slowMode=TRUE Then FT_WAIT(20)
 
 	'ALE_H -> Low
-	N64_SetCtrlPin(N64_WE or N64_RE or ALE_L)
+	NUS_SetCtrlPin(NUS_WE or NUS_RE or ALE_L)
 
 	'Set N64 Low Byte
 	MCP_WriteRegister(MCP23017_GPIOA,adrLo>>8)
@@ -133,16 +133,16 @@ Sub N64_SetAddress(adr As DWord)
 '	if slowMode=TRUE Then FT_WAIT(15)
 
 	'ALE_L -> Low
-	N64_SetCtrlPin(N64_WE or N64_RE)
+	NUS_SetCtrlPin(NUS_WE or NUS_RE)
 
 '	if slowMode=TRUE Then FT_WAIT(1500)
 
 
-	N64_SetBusDir(N64_BUS_DIR_INPUT)
+	NUS_SetBusDir(NUS_BUS_DIR_INPUT)
 End Sub
 
-Sub N64_writeData(outData AS Word)
-	N64_SetBusDir(N64_BUS_DIR_OUTPUT)		
+Sub NUS_writeData(outData AS Word)
+	NUS_SetBusDir(NUS_BUS_DIR_OUTPUT)		
 
 	MCP_WriteRegister(MCP23017_GPIOA,outData>>8)
 	outbuf[c]=&H82				:	c++
@@ -150,8 +150,8 @@ Sub N64_writeData(outData AS Word)
 	outbuf[c]=&HFF				:	c++	'ALL OUTPUT
 
 	FT_WAIT(1)
-	N64_SetCtrlPin(N64_RE)
+	NUS_SetCtrlPin(NUS_RE)
 	FT_WAIT(15)
-	N64_SetCtrlPin(N64_WE or N64_RE)
+	NUS_SetCtrlPin(NUS_WE or NUS_RE)
 	FT_WAIT(4)
 End Sub

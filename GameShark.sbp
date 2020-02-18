@@ -1,10 +1,10 @@
 
 ' ===================== GameShark, ProActionReplay Pro ========================
-Const N64_GS_BIOS_OFFSET = CART_BASEADR_ROM + &HC00000
-Const N64_GS_HEADER_OFFSET = CART_BASEADR_ROM + 0
+Const NUS_GS_BIOS_OFFSET = CART_BASEADR_ROM + &HC00000
+Const NUS_GS_HEADER_OFFSET = CART_BASEADR_ROM + 0
 Const GS_FLASH_ID = &H0808BFBF
 
-Type N64_GS_HEADER
+Type NUS_GS_HEADER
 	Initial_Reg As Word
 	isCompress As Byte	'12h=uncomplessed 13=complessed
 	uk1[4] As Byte
@@ -15,22 +15,22 @@ Type N64_GS_HEADER
 	uk3[1] As DWord
 	Title[31] As Byte
 	'<< SLOTED CART HEADER >>
-	slotedCartHeader AS N64_ROM_HEADER
+	slotedCartHeader AS NUS_ROM_HEADER
 End Type
 
-Function GS_GetHeader(gs_header AS *N64_GS_HEADER	) AS BOOL
+Function GS_GetHeader(gs_header AS *NUS_GS_HEADER	) AS BOOL
 	Dim inbuf[256] As Byte, inSize AS DWord
 
-	N64_SetAddress(N64_GS_HEADER_OFFSET)
-	N64_readRequest(256/2)
+	NUS_SetAddress(NUS_GS_HEADER_OFFSET)
+	NUS_readRequest(256/2)
 	FTDI_SendCommand()
 	FT_Read(hFT, inbuf, 256, inSize)
 
-	memcpy(gs_header, inbuf, sizeof(N64_GS_HEADER))
+	memcpy(gs_header, inbuf, sizeof(NUS_GS_HEADER))
 End Function
 
 Sub GS_Dump()
-	Dim GsHeader AS N64_GS_HEADER
+	Dim GsHeader AS NUS_GS_HEADER
 	N64PowerON()
 
 	GS_GetHeader(VarPtr(GsHeader))
@@ -58,14 +58,14 @@ Sub GS_Dump()
 	
 	printf(ex"Dumping")
 	Dim buffer[512] AS Byte, inBuf AS DWord, inSize AS DWord
-	For i=0 To (256*1024/N64_DUMP_BUFFER_SIZE)-1
-		N64_SetAddress(N64_GS_BIOS_OFFSET + i*N64_DUMP_BUFFER_SIZE)
-		N64_readRequest(N64_DUMP_BUFFER_SIZE/2)
+	For i=0 To (256*1024/NUS_DUMP_BUFFER_SIZE)-1
+		NUS_SetAddress(NUS_GS_BIOS_OFFSET + i*NUS_DUMP_BUFFER_SIZE)
+		NUS_readRequest(NUS_DUMP_BUFFER_SIZE/2)
 
 		FTDI_SendCommand()
-		FT_Read(hFT,buffer,N64_DUMP_BUFFER_SIZE,inSize)
+		FT_Read(hFT,buffer,NUS_DUMP_BUFFER_SIZE,inSize)
 
-		out.write(buffer, N64_DUMP_BUFFER_SIZE)
+		out.write(buffer, NUS_DUMP_BUFFER_SIZE)
 		printf(".")
 	Next i
 
@@ -84,31 +84,31 @@ Function GS_GetFlashId() AS DWord
 	N64PowerON()
 
 	' A0はバイト選択（上位Flash, 下位Flashの選択）なので実際のアドレスバスには出ていない
-	N64_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT)) 
-	N64_writeData(&HAAAA)
+	NUS_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT)) 
+	NUS_writeData(&HAAAA)
 
-	N64_SetAddress(GS_BASE + (&H2AAA << FLASH_SHIFT))
-	N64_writeData(&H5555)
+	NUS_SetAddress(GS_BASE + (&H2AAA << FLASH_SHIFT))
+	NUS_writeData(&H5555)
 
-	N64_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
-	N64_writeData(&H8080)
+	NUS_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
+	NUS_writeData(&H8080)
 
-	N64_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
-	N64_writeData(&HAAAA)
+	NUS_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
+	NUS_writeData(&HAAAA)
 
-	N64_SetAddress(GS_BASE + (&H2AAA << FLASH_SHIFT))
-	N64_writeData(&H5555)
+	NUS_SetAddress(GS_BASE + (&H2AAA << FLASH_SHIFT))
+	NUS_writeData(&H5555)
 
-	N64_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
-	N64_writeData(&H6060)
+	NUS_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
+	NUS_writeData(&H6060)
 
 
 	' Read manufacturer ID
-	N64_SetAddress(GS_BASE)
-	N64_readRequest(2)
+	NUS_SetAddress(GS_BASE)
+	NUS_readRequest(2)
 
-	Dim inbuf[N64_DUMP_BUFFER_SIZE] AS Byte,inSize AS DWord
-	ZeroMemory(inbuf, N64_DUMP_BUFFER_SIZE)
+	Dim inbuf[NUS_DUMP_BUFFER_SIZE] AS Byte,inSize AS DWord
+	ZeroMemory(inbuf, NUS_DUMP_BUFFER_SIZE)
 	FTDI_SendCommand()
 	FT_Read(hFT,inbuf,4,inSize)
 	
@@ -123,14 +123,14 @@ Sub GS_RestFlash()
 	N64PowerON()
 
 	' A0はバイト選択（上位Flash, 下位Flashの選択）なので実際のアドレスバスには出ていない
-	N64_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT)) 
-	N64_writeData(&HAAAA)
+	NUS_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT)) 
+	NUS_writeData(&HAAAA)
 
-	N64_SetAddress(GS_BASE + (&H2AAA << FLASH_SHIFT))
-	N64_writeData(&H5555)
+	NUS_SetAddress(GS_BASE + (&H2AAA << FLASH_SHIFT))
+	NUS_writeData(&H5555)
 
-	N64_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
-	N64_writeData(&HF0F0)
+	NUS_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
+	NUS_writeData(&HF0F0)
 
 	FTDI_SendCommand()
 	
@@ -141,23 +141,23 @@ End Sub
 Sub GS_EraseFlash() 
 	N64PowerON()
 
-	N64_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT)) 
-	N64_writeData(&HAAAA)
+	NUS_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT)) 
+	NUS_writeData(&HAAAA)
 
-	N64_SetAddress(GS_BASE + (&H2AAA << FLASH_SHIFT))
-	N64_writeData(&H5555)
+	NUS_SetAddress(GS_BASE + (&H2AAA << FLASH_SHIFT))
+	NUS_writeData(&H5555)
 
-	N64_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
-	N64_writeData(&H8080)
+	NUS_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
+	NUS_writeData(&H8080)
 
-	N64_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
-	N64_writeData(&HAAAA)
+	NUS_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
+	NUS_writeData(&HAAAA)
 
-	N64_SetAddress(GS_BASE + (&H2AAA << FLASH_SHIFT))
-	N64_writeData(&H5555)
+	NUS_SetAddress(GS_BASE + (&H2AAA << FLASH_SHIFT))
+	NUS_writeData(&H5555)
 
-	N64_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
-	N64_writeData(&H1010)
+	NUS_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
+	NUS_writeData(&H1010)
 
 	FTDI_SendCommand()
 	
@@ -170,22 +170,22 @@ End Sub
 
 Const GS_PAGESIZE = 256
 Sub GS_WritePage(page AS DWord, data AS BytePtr)
-	N64_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT)) 
-	N64_writeData(&HAAAA)
+	NUS_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT)) 
+	NUS_writeData(&HAAAA)
 
-	N64_SetAddress(GS_BASE + (&H2AAA << FLASH_SHIFT))
-	N64_writeData(&H5555)
+	NUS_SetAddress(GS_BASE + (&H2AAA << FLASH_SHIFT))
+	NUS_writeData(&H5555)
 
-	N64_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
-	N64_writeData(&HA0A0)
+	NUS_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
+	NUS_writeData(&HA0A0)
 
 '	Dump(data,256, )
 
 	Dim i aS Long, writeData AS Word
 	For i=0 To GS_PAGESIZE-1 Step 2
 		' Set Write Address
-		N64_SetAddress(N64_GS_BIOS_OFFSET + page*GS_PAGESIZE + i)
-		N64_writeData( ((data[ i ] << 8) And &HFF00) Or (data[ i+1 ] And &HFF) )
+		NUS_SetAddress(NUS_GS_BIOS_OFFSET + page*GS_PAGESIZE + i)
+		NUS_writeData( ((data[ i ] << 8) And &HFF00) Or (data[ i+1 ] And &HFF) )
 	Next i
 	
 	FTDI_SendCommand()
