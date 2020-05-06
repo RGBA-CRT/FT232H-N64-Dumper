@@ -3,7 +3,7 @@ N64 ROM Dumper using FTDI FT232H
  + http://rgbacrt.seesaa.net/article/441695249.html
 
 ## 概要 / About
-FT232HとMCP23S17を用いたN64の吸出し機です。ROMとSRAMの吸出しが一応できます。部品数も少なく、USB接続で高速(420KB/s)な吸出しができます。  
+FT232HとMCP23S17を用いたN64の吸出し機です。ROMとSRAMの吸出しができます。EEPROMには対応していません。部品数も少なく、USB接続で高速(420KB/s)な吸出しができます。  
 ActiveBasic4で雑に書いたテストプログラムです。Windowsでしか動作しません。
 
 This is N64 cart dumper using FTDI FT232H. It can dump ROM and SRAM by USB connection. 
