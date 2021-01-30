@@ -30,7 +30,7 @@ Dim CicLabelTable[NUS_CIC_COUNT] = [
 	"NUS-CIC-6105",
 	"NUS-CIC-6106",
 	"UNKNOWN CIC",
-	"NUS-CIC-NULL",
+	"<<NULL>>",
 ] AS BytePtr
 
 

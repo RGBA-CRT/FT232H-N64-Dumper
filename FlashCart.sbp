@@ -43,7 +43,9 @@ Function IntelFlash_WaitWritable(baseAddr AS DWord) AS BOOL
 
 		FT_Read(hFT,VarPtr(status),2,inSize)
 
-		'printf(ex"\t\t\t\tStatus = %08X, %d \n", status, retry)
+		if status And &H7FFF Then _
+			printf(ex"[info] Status = %08X, %d \t\t\t\t\r", status, retry)
+	
 		if status And &H8000 Then _
 			ExitDo
 
@@ -58,6 +60,7 @@ Function IntelFlash_WaitWritable(baseAddr AS DWord) AS BOOL
 
 	if status And &H1000 Then _
 		printf(ex"[Error][FlashStatusCheck] Vpp Range Error\n")
+		
 End Function
 
 ' ChipErase‚Í•·‚©‚È‚©‚Á‚½
@@ -154,6 +157,56 @@ Sub IntelFhash_Erase(baseAdr AS DWord)
 	N64PowerOFF()
 
 End Sub
+'http://www.mipsasoft.com/MS7/Hardware/FLASH/StrataFlash%20P30-T%20Data%20Sheet.pdf
+Sub IntelFhash_Test(baseAdr AS DWord)
+	
+	N64PowerON()
+
+	IntelFhash_Reset(baseAdr)
+	FTDI_SendCommand()
+
+	Dim status AS DWord,inSize AS DWord, retry AS DWord
+	Dim currBlock AS DWord, lastBlock AS DWord
+	lastBlock = &H1FFFFFF
+
+	' Erase 4 blocks with 16kwords each
+	For currBlock = 0 To &H20000 Step &H8000
+		printf(ex"16kword block: %08Xh- \r", baseAdr + currBlock)
+
+	    ' Unlock block command
+	    NUS_SetAddress(baseAdr + currBlock)
+	    NUS_writeData(&H60)
+	    NUS_SetAddress(baseAdr + currBlock)
+	    NUS_writeData(&HD0)
+
+		FTDI_SendCommand()
+		IntelFlash_WaitWritable(baseAdr + currBlock)
+	
+
+		printf(ex"\n")
+	Next currBlock
+
+
+  ' Erase up to 255 blocks with 64kwords each
+	For currBlock = &H20000 To lastBlock Step &H20000
+		printf(ex"64kword block: %08Xh- %d%% \r",  baseAdr + currBlock, (currBlock*100)/lastBlock)
+		' Unlock block command
+		NUS_SetAddress(baseAdr + currBlock)
+		NUS_writeData(&H60)
+		NUS_SetAddress(baseAdr + currBlock)
+		NUS_writeData(&HD0)
+
+		FTDI_SendCommand()
+
+		IntelFlash_WaitWritable(baseAdr + currBlock)
+	
+		printf(ex"\n")	
+	Next currBlock
+
+	IntelFhash_Reset(baseAdr)
+	N64PowerOFF()
+
+End Sub
 
 
 Sub IntelFhash_WriteFile(baseAdr As DWord, fileName AS BytePtr)
@@ -223,6 +276,8 @@ Sub IntelFhash_WriteFile(baseAdr As DWord, fileName AS BytePtr)
 	N64PowerOFF()
 	FTDI_SendCommand()
 End Sub
+
+
 
 Sub ReadCFI()
 	

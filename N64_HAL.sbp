@@ -41,14 +41,14 @@ Sub N64PowerOFF()
 	FTDI_SendCommand()
 	Sleep(3)
 End Sub
-/*
+
 Sub NUS_Reset()
 	MCP_WriteRegister(MCP23017_GPIOB,EEP_CLK)
 	FTDI_SendCommand()
 	MCP_WriteRegister(MCP23017_GPIOB,RESET or EEP_CLK)
 	FTDI_SendCommand()
 End Sub
-
+/*
 Sub NUS_Clock()
 	MCP_WriteRegister(MCP23017_GPIOB,0)
 	MCP_WriteRegister(MCP23017_GPIOB,EEP_CLK)

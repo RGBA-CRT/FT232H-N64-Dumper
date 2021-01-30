@@ -118,7 +118,7 @@ Sub Main()
 
 		flush()
 
-		if op=1 or op=2 or op=3 Then
+		if op<>9999 Then
 			' ファイル名を生成
 			memcpy(FileName,header.Title,NUS_TITLE_LEN)
 
@@ -150,7 +150,8 @@ Sub Main()
 			Case 3
 				lstrcat(FileName,".sra")
 
-				Input ex"Input sram size (ex:32KB)\n > ",adrStr
+				'Input ex"Input sram size (ex:32KB)\n > ",adrStr
+				adrStr="32KB"
 				rcAsciiToInt(adrStr,VarPtr(adr),0,TRUE)
 
 				printf(ex"Size = %dKB : %d bytes : 0x%X\n",
@@ -161,29 +162,48 @@ Sub Main()
 
 				DumpFullRom("temp-sram.raw",adr,CART_BASEADR_SRAM)
 
-				ConvertLittleEndian("sram.raw",FileName)
+				ConvertLittleEndian("temp-sram.raw",FileName)
+
+				printf(ex"Saved sram dump to \q%s\q", FileName)
+
+			Case 24
+				lstrcat(FileName,"_debug.sra")
+
+				'Input ex"Input sram size (ex:32KB)\n > ",adrStr
+				adrStr="128KB"
+				rcAsciiToInt(adrStr,VarPtr(adr),0,TRUE)
+
+				printf(ex"Size = %dKB : %d bytes : 0x%X\n",
+					adr/1024,
+					adr,
+					adr
+				)
+
+				DumpFullRom("temp-sram.raw",adr,CART_BASEADR_SRAM)
+
+				ConvertLittleEndian("temp-sram.raw",FileName)
 
 				printf(ex"Saved sram dump to \q%s\q", FileName)
 
 			Case 4
+				Do
+					testDump(adr)
+					Input ex"[ENTER:Continue][1:InputAdr][2:Reload][3:Exit]\n> ",op
 
-	*TEST
-				testDump(adr)
-				Input ex"[ENTER:Continue][1:InputAdr][2:Reload][3:Exit]\n> ",op
+					if op=0 Then 
+						adr += 128
 
-				if op=0 Then 
-					adr += 128
-					Goto *TEST 
+					Elseif op=1 Then 
+						Input ex"Address : ", adrStr
+						rcAsciiToInt(adrStr,VarPtr(adr),0,TRUE)
 
-				Elseif op=1 Then 
-					Input ex"Address : ", adrStr
-					rcAsciiToInt(adrStr,VarPtr(adr),0,TRUE)
-					Goto *TEST
+					Elseif op=2 Then 
 
-				Elseif op=2 Then 
-					Goto *TEST
+					Else
+						ExitDo
 
-				Endif
+					Endif
+				Loop
 			Case 5
 				Goto *EXIT_PROGRAM
 
@@ -261,6 +281,21 @@ Sub Main()
 				IntelFhash_Erase(CART_BASEADR_ROM + &H2000000)
 				N64PowerOFF()
 
+			Case 61
+				EnterSlowMode()
+				N64PowerON()
+				IntelFhash_Test(CART_BASEADR_ROM + 0)
+				N64PowerOFF()
+
+			Case 62
+				Input ex"romspeed> : ", op
+				Print "romspeed: ",op
+				SetRomSpeed(op)
+
+
+			Case 16
+				NUS_Reset()
+
 		End Select
 
 		Print ex"\n\n"
@@ -275,8 +310,18 @@ EndSub
 
 Sub EnterSlowMode()
 	Print "Slow Mode Eneble"
-	memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x00\x00",7)  :	c+=7	'SlowSpeed For FlashCart
+	memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\xff\x00",7)  :	c+=7	'SlowSpeed For FlashCart
 	slowMode=TRUE
+End Sub
+
+
+Sub SetRomSpeed(speed As Word)
+	Print "Slow Mode Eneble"
+	memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x00\x00",7)  :	c+=7	'OverSpeed
+	'slowMode=TRUE
+	outbuf[c-1] = speed>>8
+	outbuf[c-2] = speed And &HFF
+	Dump(outbuf+c-7,7)
 End Sub
 
 Sub flush()
@@ -428,7 +473,7 @@ Sub PrintRomInfo(header AS *NUS_ROM_HEADER)
 	ChangeEndianDW(header->Raw.CRC2)
 	ChangeEndianDW(header->Raw.EntryPoint)
 
-	printf(ex"N64 ROM Infomation\n\tTitle    : %s \n\tGameID   : NUS-%s\n\tVersion  : 1.%d\n\tCIC Type : %s\n\tCRC1     : 0x%08X\n\tCRC2     : 0x%08X\n\tEntryPtr : 0x%08X\n\tCompress : %s\n",
+	printf(ex"N64 ROM Infomation\n\tTitle    : %s \n\tGameID   : NUS-%s \n\tVersion  : 1.%d\n\tCIC Type : %s\n\tCRC1     : 0x%08X\n\tCRC2     : 0x%08X\n\tEntryPtr : 0x%08X\n\tCompress : %s\n",
 		header->Title,
 		header->GameID_str,
 		header->Raw.Version,
@@ -438,7 +483,7 @@ Sub PrintRomInfo(header AS *NUS_ROM_HEADER)
 		isCompress	
 	)
 
-	printf(ex"\tROM Size :［推定］%dMB (%dMbit), %s \n\n",
+	printf(ex"\tROM Size : %d MB (%dMbit) [推定] ::: %s \n\n",
 		header->RomSize/(1024*1024),
 		header->RomSize/(1024*1024/8),
 		header->RomSizeReason
