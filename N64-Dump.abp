@@ -16,6 +16,11 @@
  * 	MCP23S17-GPIOB <-> N64 EEP_CLK /RESET S_DAT
  */
 
+
+/*
+todo: verify, error check, refactor, check blank before write, unlock only command, erace on program
+*/
+
 #console
 #include "D2XX.sbp"
 #include <RGBALib.sbp>
@@ -103,10 +108,20 @@ Sub Main()
 	Dim adrStr AS String, adr as DWord
 	Dim FileName[NUS_TITLE_LEN+16] As Byte, i AS Long
 
+
+
+
+'	EnterSlowMode()
+'	IntelFhash_WriteFile(CART_BASEADR_ROM, "controller_pak.n64")
+'	IntelFhash_WriteFile(CART_BASEADR_ROM, "YOSHI STORY.z64")
+
+
 	*ROM_INFO
 		input "[INSERT CART AND PRESS ENTER]",DevIdx
 
 		flush()
+		FillMemory(VarPtr(header), sizeof(NUS_ROM_HEADER), &HDD)
+		header.RomSizeReason="ERR"
 		GetRomInfo(VarPtr(header))
 		if header.Title[0]=ex"\xFF" Then lstrcpy(header.Title,"[CART CONNECT ERR]")
 		PrintRomInfo(VarPtr(header))
@@ -296,6 +311,13 @@ Sub Main()
 			Case 16
 				NUS_Reset()
 
+			Case 63
+				EnterSlowMode()
+				N64PowerON()
+				FTDI_SendCommand()
+				IntelFlash_SetReadConfigRegister(CART_BASEADR_ROM)
+				flash_printID(CART_BASEADR_ROM)
+				N64PowerOFF()
 		End Select
 
 		Print ex"\n\n"
@@ -310,7 +332,7 @@ EndSub
 
 Sub EnterSlowMode()
 	Print "Slow Mode Eneble"
-	memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\xff\x00",7)  :	c+=7	'SlowSpeed For FlashCart
+	memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x03\x00",7)  :	c+=7	'SlowSpeed For FlashCart
 	slowMode=TRUE
 End Sub
 

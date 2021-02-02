@@ -2,36 +2,158 @@
  *
  */
 Sub flash_printID(baseAdr AS DWord)
-			NUS_SetAddress(baseAdr + (&H555 << 1)) 
-			NUS_writeData(&HAA)
-			NUS_SetAddress(baseAdr + (&H2AA << 1))
-			NUS_writeData(&H55)
-			NUS_SetAddress(baseAdr + (&H555 << 1))
-			NUS_writeData(&H90)
+	NUS_SetAddress(baseAdr + (&H555 << 1)) 
+	NUS_writeData(&HAA)
+	NUS_SetAddress(baseAdr + (&H2AA << 1))
+	NUS_writeData(&H55)
+	NUS_SetAddress(baseAdr + (&H555 << 1))
+	NUS_writeData(&H90)
 
-			  '' Read manufacturer ID
-			NUS_SetAddress(baseAdr)
-			NUS_readRequest(&H110/2)
+	  '' Read manufacturer ID
+	NUS_SetAddress(baseAdr)
+	NUS_readRequest(&H8)
 
-			'RESET
-			NUS_SetAddress(baseAdr )
-			NUS_writeData(&HFF)
+	NUS_SetAddress(baseAdr + &H100)
+	NUS_readRequest(&H90)
 
-			Dim inbuf[&H110] AS Byte,inSize AS DWord
-			FTDI_SendCommand()
-			FT_Read(hFT,inbuf,&H110,inSize)
+	'RESET
+	NUS_SetAddress(baseAdr )
+	NUS_writeData(&HFF)
 
-			Dump(inbuf,&H110,baseAdr)
+	Dim inbuf[&H220] AS Byte,inSize AS DWord
+	FillMemory(inbuf,&H220,&HCC)
+	FTDI_SendCommand()
+	FT_Read(hFT,inbuf,&H10,inSize)
+	FT_Read(hFT,inbuf+&H20,&H120,inSize)
 
-			Dim mfID AS Word, deviceID AS Word
-			mfID=GetWord(inbuf+0)
-			deviceID=GetWord(inbuf+2)
-			printf(ex"ManufactureID : %04X  DeviceID : %04X\n",mfID,deviceID)
+	Dump(inbuf,&H130,baseAdr)
 
-			'https:'www.jedec.org/sites/default/files/docs/JEP106AJ.pdf
-			If mfID>>8 = &H89 Then Print "Intel"
-			Print
+	Dim mfID AS Word, deviceID AS Word
+	mfID=ChangeEndianWord(GetWord(inbuf+0))
+	deviceID=ChangeEndianWord(GetWord(inbuf+2))
+	printf(ex"ManufactureID : %04X  DeviceID : %04X\n",mfID,deviceID)
+
+	'https:'www.jedec.org/sites/default/files/docs/JEP106AJ.pdf
+	If mfID = &H89 Then 
+		Print "Intel"
+
+		select case deviceID
+			Case &H8817
+				Print "-T 64Mbit"
+			Case &H881A
+				Print "-B 64Mbit"
+			Case &H8818
+				Print "-T 128Mbit"
+			Case &H881B
+				Print "-B 128Mbit"
+			Case &H8819
+				Print "-T 256Mbit"
+			Case &H881C
+				Print "-B 256Mbit"
+		End Select
+
+		' See intel dataseet
+		Dim block As Word, RCR As Word
+		block = ChangeEndianWord(GetWord(inbuf+4))
+		printf(ex"BLC=%04X ...\n",block)
+		if block And 1 Then
+			Print " - Block is Locked"
+		Else
+			Print " - Block is Unlocked"
+		End If
+		if block And 2 Then
+			Print " - Block is Locked-Down"
+		Else
+			Print " - Block is not Locked-Down"
+		End If
+
+		RCR = ChangeEndianWord(GetWord(inbuf+10))
+		printf(ex"RCR=%04X ...\n",RCR)
+		if RCR And &H8000 Then
+			Print " - Read Mode: Asynchronous page-mode read (default)"
+		Else
+			Print " - Read Mode: Synchronous burst-mode read"
+		Endif
+		printf(ex" - Latency: Code%x\n", (RCR>>11) And &H7)
+
+		if RCR And &H0400 Then
+			Print " - Wait Polarity: WAIT signal is active high (default)"
+		Else
+			Print " - Wait Polarity: WAIT signal is active low"
+		Endif
+
+		if RCR And &H0200 Then
+			Print " - Data Hold: Data held for a 2-clock data cycle (default)"
+		Else
+			Print " - Data Hold: Data held for a 1-clock data cycle"
+		Endif
+
+		if RCR And &H0100 Then
+			Print " - Wait Delay: WAIT deasserted one data cycle before valid data (default)"
+		Else
+			Print " - Wait Delay: WAIT deasserted with valid data"
+		Endif
+
+		if RCR And &H0080 Then
+			Print " - Burst Sequence: Linear (default)"
+		Else
+			Print " - Burst Sequence: Reserved"
+		Endif
+
+		if RCR And &H0040 Then
+			Print " - Clock Edge: Rising edge (default)"
+		Else
+			Print " - Clock Edge: Falling edge"
+		Endif
+
+		if RCR And &H0008 Then
+			Print " - Burst Wrap: No Wrap; Burst accesses do not wrap within burst length (default)"
+		Else
+			Print " - Burst Wrap: Wrap; Burst accesses wrap within burst length set by BL[2:0]"
+		Endif
+
+		select case RCR And &H7
+			Case 1
+				Print " - Burst Length: 4-word burst"
+			Case 2
+				Print " - Burst Length: 8-word burst"
+			Case 3
+				Print " - Burst Length: 6-word burst"
+			Case 7
+				Print " - Burst Length: Continuous-word burst"
+			Case Else
+				Print " - Burst Length: reserved"
+		End Select
+
+		Print
+	End If
+
 End Sub
+
+
+Function IntelFlash_SetReadConfigRegister(baseAdr AS DWord) AS BOOL
+	' unlock
+/*	NUS_SetAddress(baseAdr)
+	NUS_writeData(&H60)
+
+	NUS_SetAddress(baseAdr)
+	NUS_writeData(&HD0)
+*/
+	NUS_SetAddress(baseAdr)
+	NUS_writeData(&HFF)
+
+'	Dim RCR = &HBFCF As DWord	'default
+	Dim RCR = &H009FCF As DWord	'Code3
+	NUS_SetAddress(baseAdr Or (RCR<<1))
+	NUS_writeData(&H60)
+
+	NUS_SetAddress(baseAdr Or (RCR<<1))
+	NUS_writeData(&H03)
+
+	FTDI_SendCommand()
+
+'	flash_printID(baseAdr)
+End Function
 
 Function IntelFlash_WaitWritable(baseAddr AS DWord) AS BOOL
 	Dim retry AS DWord, status As DWord, inSize AS DWord
@@ -43,8 +165,17 @@ Function IntelFlash_WaitWritable(baseAddr AS DWord) AS BOOL
 
 		FT_Read(hFT,VarPtr(status),2,inSize)
 
-		if status And &H7FFF Then _
-			printf(ex"[info] Status = %08X, %d \t\t\t\t\r", status, retry)
+		if status And &H7FFF Then 
+			printf(ex"\t\t\t\t[info] Status = %08X, %d \t\t\t\t\r", status, retry)
+			
+			' Clear Error
+		    NUS_SetAddress(baseAddr)
+		    NUS_writeData(&H50)
+
+			if retry>&HFFFF then exitDo
+		Endif
+
+
 	
 		if status And &H8000 Then _
 			ExitDo
@@ -61,7 +192,195 @@ Function IntelFlash_WaitWritable(baseAddr AS DWord) AS BOOL
 	if status And &H1000 Then _
 		printf(ex"[Error][FlashStatusCheck] Vpp Range Error\n")
 		
+	if retry<&HFFFF then
+		IntelFlash_WaitWritable=TRUE
+	Else
+		IntelFlash_WaitWritable=FALSE
+	Endif
 End Function
+
+Sub InterlFlash_Print(status As Word)
+	printf(ex"status: %04X ... ", status)
+
+	if (status And &H8000) = 0 Then _
+		printf(ex"[DWS:Write not ready]")
+
+	if status And &H4000 Then _
+		printf(ex"[ESS:Erase suspend]")
+
+	if status And &H2000 Then _
+		printf(ex"[ES:Erase fail or program error]")
+
+	if status And &H1000 Then _
+		printf(ex"[PS:Program failed]")
+
+	if status And &H0800 Then _
+		printf(ex"[VPPS:Vpp error. Vpp < VppLK]")
+
+	if status And &H0400 Then _
+		printf(ex"[PSS:Program susupend]")
+
+	if status And &H0200 Then _
+		printf(ex"[BLS:Block]")
+
+	if status And &H0100 Then _
+		printf(ex"[BWS:BEEP in-progress]")
+	
+End Sub
+
+
+Const INTERL_WAIT_BUFFER_RETRY = 2000
+Function IntelFlash_WaitBuffer(baseAddr AS DWord) AS BOOL
+	Dim retry AS DWord, status As DWord, inSize AS DWord
+	Do 
+		NUS_SetAddress(baseAddr)
+		FTDI_SendCommand()
+		NUS_readRequest(1)
+		FTDI_SendCommand()
+
+		FT_Read(hFT,VarPtr(status),2,inSize)
+
+		if status And &H7FFF then 
+			InterlFlash_Print(status)
+			printf(ex"   []\r")
+		endif
+			 
+		if status And &H8000 Then ExitDo
+
+		retry++
+		if (retry Mod 1000)=0 Then 
+			InterlFlash_Print(status)
+			printf(ex":::[Warning] Waiting write buffer... retry %d\n", retry)
+		End If
+		if retry > INTERL_WAIT_BUFFER_RETRY Then 
+			InterlFlash_Print(status)
+			printf(ex":::[Error] Wait write buffer timeout.\n", retry)
+			IntelFlash_WaitBuffer=FALSE
+			ExitFunction
+		End If
+	Loop
+	IntelFlash_WaitBuffer=TRUE
+End Function
+
+
+Const INTERL_FLASH_CMD_BUFFER_WRITE = &HE8
+Const INTERL_FLASH_CMD_READ_STATUS = &H70
+Const INTERL_FLASH_CMD_CLEAR_STATUS = &H50
+Const INTERL_FLASH_CMD_DO_WRITE = &HD0
+Sub IntelFhash_WriteFile(baseAdr As DWord, fileName AS BytePtr)
+
+	N64PowerON()
+	FTDI_SendCommand()
+
+	IntelFhash_Reset(baseAdr)
+
+IntelFlash_SetReadConfigRegister(baseAdr)
+	Const IF_WRITE_PAGE_SIZE = 64
+	Dim in AS File, fileSize AS DWord
+	if in.openFile(fileName, GENERIC_READ)=FALSE Then
+		Print "Open Err"
+		ExitSub
+	End If
+	fileSize = in.length()
+
+	Dim buf[IF_WRITE_PAGE_SIZE] AS Byte
+	Dim totalBytes AS DWord, i AS DWord
+
+	For totalBytes = 0 To fileSize-1 Step 64
+		'unlock
+		NUS_SetAddress(baseAdr + totalBytes)
+		NUS_writeData(&H60)
+
+		NUS_SetAddress(baseAdr + totalBytes)
+		NUS_writeData(&HD0)
+
+		' Read File
+		in.read(buf, IF_WRITE_PAGE_SIZE)
+		'Dump(buf, 64, totalBytes + baseAdr)
+		
+		if (totalBytes Mod 16384) = 0 Then _
+			printf(ex"[WriteIntelFlash] %Xh- %dMB/%dMB %d%% \n", _
+				baseAdr + totalBytes, _
+				totalBytes/(1024*1024), _
+				fileSize/(1024*1024), _
+				totalBytes*100/fileSize
+			)
+
+		' Buffered program command		
+		NUS_SetAddress(baseAdr + totalBytes)
+		NUS_writeData(INTERL_FLASH_CMD_BUFFER_WRITE)
+		FTDI_SendCommand()
+
+		'Wait buffer available
+		if IntelFlash_WaitBuffer(baseAdr + totalBytes)=FALSE Then
+'		if IntelFlash_WaitWritable(baseAdr + totalBytes)=FALSE Then
+			printf(ex"WriteError\n")
+			' Issue Read Statu Register Command				
+			NUS_SetAddress(baseAdr + totalBytes)
+			NUS_writeData(INTERL_FLASH_CMD_READ_STATUS)
+			Goto *READ_STATUS_REG2
+		End If
+
+		' Write word count (minus 1)
+        NUS_SetAddress(baseAdr + totalBytes)
+        NUS_writeData(&H1F)
+
+		FTDI_SendCommand()
+
+		For i=0 To IF_WRITE_PAGE_SIZE-1	Step 2
+		'	printf(ex"\t%08X :: %04X\n", baseAdr + totalBytes + i,  ((buf[ i ] << 8) And &HFF00) Or (buf[ i+1 ] And &HFF))
+			NUS_SetAddress(baseAdr + totalBytes + i)
+			NUS_writeData( ((buf[ i ] << 8) And &HFF00) Or (buf[ i+1 ] And &HFF) )
+		Next i
+
+		FTDI_SendCommand()
+
+		NUS_SetAddress(baseAdr + totalBytes + 62)
+		NUS_writeData(INTERL_FLASH_CMD_DO_WRITE)
+
+*READ_STATUS_REG2
+		if IntelFlash_WaitBuffer(baseAdr + totalBytes + 62)=FALSE Then
+			printf(ex"IntelFlash_WaitBuffer ... READ_STATUS_REG2 fail\n")
+			ExitFor
+		End If
+		
+		' Full Status Check
+		Dim status As Word, dwab As DWord
+		NUS_SetAddress(baseAdr + totalBytes + 62)
+        NUS_writeData(INTERL_FLASH_CMD_READ_STATUS)
+		FTDI_SendCommand()
+
+		NUS_SetAddress(baseAdr + totalBytes + 62)
+		NUS_readRequest(1)
+		FTDI_SendCommand()
+
+		FT_Read(hFT,VarPtr(status),2,dwab)
+		if status And &H7FFF then
+			'printf(ex"[WriteIntelFlash] status=%04X ",status)
+			printf(ex" (clear) ")
+			InterlFlash_Print(status)
+'			printf(ex"\t\t\t\t\t\t")
+			printf(ex"\n")
+			' Clear error status
+			NUS_SetAddress(baseAdr + totalBytes)
+    	    NUS_writeData(INTERL_FLASH_CMD_CLEAR_STATUS)
+			FTDI_SendCommand()
+		Endif
+
+'		printf(ex"\n")
+'		ExitFor
+
+	Next totalBytes
+
+*WRITE_EXIT
+	IntelFhash_Reset(baseAdr)
+	FTDI_SendCommand()
+	in.close()
+	
+
+	N64PowerOFF()
+	FTDI_SendCommand()
+End Sub
 
 ' ChipErase‚Í•·‚©‚È‚©‚Á‚½
 Sub IntelFhash_ChipErase(baseAdr AS DWord)
@@ -102,6 +421,9 @@ Sub IntelFhash_Erase(baseAdr AS DWord)
 
 	IntelFhash_Reset(baseAdr)
 	FTDI_SendCommand()
+	
+	IntelFlash_SetReadConfigRegister(baseAdr)
+	flash_printID(baseAdr)
 
 	Dim status AS DWord,inSize AS DWord, retry AS DWord
 	Dim currBlock AS DWord, lastBlock AS DWord
@@ -154,6 +476,10 @@ Sub IntelFhash_Erase(baseAdr AS DWord)
 	Next currBlock
 
 	IntelFhash_Reset(baseAdr)
+	
+	IntelFlash_SetReadConfigRegister(baseAdr)
+	flash_printID(baseAdr)
+
 	N64PowerOFF()
 
 End Sub
@@ -209,74 +535,6 @@ Sub IntelFhash_Test(baseAdr AS DWord)
 End Sub
 
 
-Sub IntelFhash_WriteFile(baseAdr As DWord, fileName AS BytePtr)
-
-	N64PowerON()
-
-	Const IF_WRITE_PAGE_SIZE = 64
-	Dim in AS File, fileSize AS DWord
-	if in.openFile(fileName, GENERIC_READ)=FALSE Then
-		Print "Open Err"
-		ExitSub
-	End If
-	fileSize = in.length()
-
-	Dim buf[IF_WRITE_PAGE_SIZE] AS Byte
-	Dim totalBytes AS DWord, i AS DWord
-
-	For totalBytes = 0 To fileSize-1 Step 64
-		in.read(buf, IF_WRITE_PAGE_SIZE)
-		'Dump(buf, 64, totalBytes + baseAdr)
-		
-		if (totalBytes Mod 16384) = 0 Then _
-			printf(ex"[WriteIntelFlash] %Xh- %dMB/%dMB %d%% \n", _
-				baseAdr + totalBytes, _
-				totalBytes/(1024*1024), _
-				fileSize/(1024*1024), _
-				totalBytes*100/fileSize
-			)
-
-		' Buffered program command		
-		NUS_SetAddress(baseAdr + totalBytes)
-		NUS_writeData(&HE8)
-		FTDI_SendCommand()
-
-		'Check Status register
-		IntelFlash_WaitWritable(baseAdr + totalBytes)
-
-		' Write word count (minus 1)
-        NUS_SetAddress(baseAdr + totalBytes)
-        NUS_writeData(&H1F)
-
-		FTDI_SendCommand()
-
-		For i=0 To IF_WRITE_PAGE_SIZE-1	Step 2
-		'	printf(ex"\t%08X :: %04X\n", baseAdr + totalBytes + i,  ((buf[ i ] << 8) And &HFF00) Or (buf[ i+1 ] And &HFF))
-			NUS_SetAddress(baseAdr + totalBytes + i)
-			NUS_writeData( ((buf[ i ] << 8) And &HFF00) Or (buf[ i+1 ] And &HFF) )
-		Next i
-
-		FTDI_SendCommand()
-
-		NUS_SetAddress(baseAdr + totalBytes + 62)
-		NUS_writeData(&HD0)
-
-		IntelFlash_WaitWritable(baseAdr + totalBytes + 62)
-
-'		printf(ex"\n")
-'		ExitFor
-
-	Next totalBytes
-
-	IntelFhash_Reset(baseAdr)
-	FTDI_SendCommand()
-	in.close()
-	
-
-	N64PowerOFF()
-	FTDI_SendCommand()
-End Sub
-
 
 
 Sub ReadCFI()
@@ -286,8 +544,8 @@ Sub ReadCFI()
 				Dim inbuf[NUS_DUMP_BUFFER_SIZE] AS Byte,inSize AS DWord
 				flash_printID(CART_BASEADR_ROM )
 				flash_printID(CART_BASEADR_ROM + &H2000000)
-				flash_printID(CART_BASEADR_ROM + &H4000000)
-				flash_printID(CART_BASEADR_ROM + &H6000000)
+'				flash_printID(CART_BASEADR_ROM + &H4000000)
+'				flash_printID(CART_BASEADR_ROM + &H6000000)
 
 				Print
 				Print "CFI INFO"
@@ -321,7 +579,6 @@ Sub ReadCFI()
 				out.write(inbuf,NUS_DUMP_BUFFER_SIZE)
 				out.close()
 
-				
 				N64PowerOFF()
 
 End Sub

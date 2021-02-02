@@ -155,3 +155,4 @@ Sub NUS_writeData(outData AS Word)
 	NUS_SetCtrlPin(NUS_WE or NUS_RE)
 	FT_WAIT(4)
 End Sub
+
