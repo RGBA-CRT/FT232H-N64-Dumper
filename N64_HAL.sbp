@@ -139,6 +139,8 @@ Sub NUS_SetAddress(adr As DWord)
 
 
 	NUS_SetBusDir(NUS_BUS_DIR_INPUT)
+
+'	printf(ex"[SetAddress] %08x\n",adr)
 End Sub
 
 Sub NUS_writeData(outData AS Word)

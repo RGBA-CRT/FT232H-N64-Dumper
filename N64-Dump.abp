@@ -107,9 +107,8 @@ Sub Main()
 	Dim op AS DWord,header AS NUS_ROM_HEADER
 	Dim adrStr AS String, adr as DWord
 	Dim FileName[NUS_TITLE_LEN+16] As Byte, i AS Long
-
-
-
+	Dim save_type As NUS_SAVE_TYPE
+	Dim SaveBE AS String, SaveLE As String
 
 '	EnterSlowMode()
 '	IntelFhash_WriteFile(CART_BASEADR_ROM, "controller_pak.n64")
@@ -163,24 +162,46 @@ Sub Main()
 				if DumpFullRom(FileName, adr)<>TRUE Then Print " [Error]":Goto *EXIT_PROGRAM
 
 			Case 3
-				lstrcat(FileName,".sra")
+				N64PowerON()	
+				FTDI_SendCommand()
 
-				'Input ex"Input sram size (ex:32KB)\n > ",adrStr
-				adrStr="32KB"
-				rcAsciiToInt(adrStr,VarPtr(adr),0,TRUE)
+				save_type=SloveSaveType()
+				printf(ex"SaveType: %s\n",GetSaveTypeLabel(save_type))
 
-				printf(ex"Size = %dKB : %d bytes : 0x%X\n",
-					adr/1024,
-					adr,
-					adr
-				)
+				if save_type = NUS_SAVE_UNKNOWN or save_type = NUS_SAVE_NONE Then
+					printf(ex"dump save abort.\n")
+				Else
+					Dim ltsave_ext As BytePtr
+					if save_type=NUS_SAVE_SRAM then
+						adr = 32*1024  As DWord
+						ltsave_ext = ".sra"
+					Else if save_type=NUS_SAVE_FLASH_BYTE or save_type=NUS_SAVE_FLASH_WORD then
+						adr = 128*1024 As DWord
+						ltsave_ext = ".fla"
+						SaveFlash_CmdReadEnable()
+					Else 
+						debug
+						adr = 128*1024 As DWord
+					End If
 
-				DumpFullRom("temp-sram.raw",adr,CART_BASEADR_SRAM)
+					printf(ex"Size = %dKB : %d bytes : 0x%X : %dKbits\n\n",
+						adr/1024,
+						adr,
+						adr,
+						adr*8/1024
+					)
 
-				ConvertLittleEndian("temp-sram.raw",FileName)
+					SaveBE = FileName+MakeStr(".sav")
+					SaveLE = FileName+MakeStr(ltsave_ext)
+					'DumpFullRom(SaveBE,adr,CART_BASEADR_SRAM)
+					DumpSram(SaveBE, adr, save_type, CART_BASEADR_SRAM)
+					printf(ex"Saved sram dump for Ares to \q%s\q\n", SaveBE)
+					
+					ConvertLittleEndian(SaveBE,SaveLE)
+					printf(ex"Saved sram dump for PJ64 to \q%s\q\n", SaveLE)
 
-				printf(ex"Saved sram dump to \q%s\q", FileName)
-
+					N64PowerOFF()
+				End If
 			Case 24
 				lstrcat(FileName,"_debug.sra")
 
@@ -194,6 +215,8 @@ Sub Main()
 					adr
 				)
 
+				'問答無用でFlashRamを有効にする。レジスタの位置にかぶる大きさのSRAMがないので大丈夫のはず
+				SaveFlash_CmdReadEnable()
 				DumpFullRom("temp-sram.raw",adr,CART_BASEADR_SRAM)
 
 				ConvertLittleEndian("temp-sram.raw",FileName)
@@ -296,6 +319,27 @@ Sub Main()
 				IntelFhash_Erase(CART_BASEADR_ROM + &H2000000)
 				N64PowerOFF()
 
+			Case 40
+				N64PowerON()
+				SaveFlash_printID()
+				N64PowerOFF()
+
+
+			Case 41
+				N64PowerON()
+				SaveFlash_printID()
+				SaveFlash_CmdReadEnable()
+				N64PowerOFF()
+
+			Case 42
+				N64PowerON()
+				save_type=SloveSaveType()
+				printf(ex"SaveType: %s\n",GetSaveTypeLabel(save_type))
+				
+				N64PowerOFF()
+
+			Case 43
+				ConvertLittleEndian("A","B")
 			Case 61
 				EnterSlowMode()
 				N64PowerON()
@@ -382,17 +426,21 @@ Function DumpFullRom(fileName As BytePtr,RomSize As DWord)(BaseAddress As DWord)
 	if FTDI_SendCommand()<>FT_OK Then Goto *DFR_EXIT
 
 	Print "dumping data..."
-	Dim time As DWord,lt As DWord
+	Dim time As DWord,lt As DWord, retry As DWord
 	time=GetTickCount()
 	Do
-		NUS_SetAddress(reqAdr + BaseAddress)
+		' Byte Address
+		NUS_SetAddress(BaseAddress + reqAdr)
 		NUS_readRequest(NUS_DUMP_BUFFER_SIZE/2)
 
 		if FTDI_SendCommand()<>FT_OK Then Goto *DFR_EXIT
 		if FT_Read(hFT,inbuf,NUS_DUMP_BUFFER_SIZE,inSize)<>FT_OK Then Goto *DFR_EXIT
-	'	flush()
-	'	Dump(inbuf,64,reqAdr,TRUE)
-
+		if inSize <> NUS_DUMP_BUFFER_SIZE Then
+			printf(ex"receive size error.\n")
+			retry++
+			if retry>5 then Goto *DFR_EXIT
+			Continue
+		End If
 
 		out.write(inbuf,inSize)
 		reqAdr+=inSize
@@ -402,7 +450,7 @@ Function DumpFullRom(fileName As BytePtr,RomSize As DWord)(BaseAddress As DWord)
 			printf(ex"Address=%08X ... %d%%  [%dKB/s]          ",reqAdr,(reqAdr/RomSize)*100,reqAdr/(GetTickCount()-time))
 			if GetKeyState(VK_ESCAPE) And &H80 Then Print ex"\n[ESC]Cancelled by user.":Goto *DFR_EXIT
 		End If
-		if reqAdr Mod &H100000 = 0 Then Sleep(200)
+	'	if reqAdr Mod &H100000 = 0 Then Sleep(200)
 
 		if reqAdr=>RomSize Then ExitDo
 	Loop

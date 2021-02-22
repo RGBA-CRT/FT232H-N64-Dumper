@@ -1,0 +1,420 @@
+'Referenced docs:
+' - http://micro-64.com/database/gamesave.shtml
+' - https://github.com/sanni/cartreader/blob/master/Cart_Reader/N64.ino
+' - https://github.com/DaedalusX64/daedalus/blob/master/Source/Core/FlashMem.cpp
+Const CART_SAVE_FLASH_CMD_REG_ADR = &H08010000
+
+Const NUS_SAVE_FLASH_CMD_STATUS=&HE1000000
+Const NUS_SAVE_FLASH_CMD_READ=&HF0000000
+
+Sub SaveFlash_Command(cmd AS DWord)
+	NUS_SetAddress(CART_SAVE_FLASH_CMD_REG_ADR) 
+	NUS_writeData(cmd>>16)
+	NUS_writeData(cmd)
+End Sub
+
+Sub SaveFlash_printID()
+	Dim inbuf[&H220] AS Byte,inSize AS DWord
+	SaveFlash_CmdStatusImmdate(inbuf AS SAVE_FLASH_STATUS)
+
+	Dim FlashType As BytePtr
+	FlashType=SaveFlash_GetFlashChipLabel(inbuf[7])
+	printf(ex"Flash Type: %s\n",FlashType)
+
+	'
+	SaveFlash_CmdReadEnable()
+
+	NUS_SetAddress(CART_BASEADR_SRAM)
+	NUS_readRequest(&H20)
+	NUS_SetAddress(CART_BASEADR_SRAM+&H8000-16)
+	NUS_readRequest(&H40)
+	NUS_SetAddress(CART_BASEADR_SRAM+&H8000)
+	NUS_readRequest(&H40)
+
+	FTDI_SendCommand()
+	FT_Read(hFT,inbuf,&H40,inSize)
+	printf(ex"\nTop of FlashRAM:\n",NUS_SAVE_FLASH_CMD_STATUS)
+	Dump(inbuf,&H40,CART_BASEADR_SRAM)
+
+	FT_Read(hFT,inbuf,&H80,inSize)
+	printf(ex"\nTop of FlashRAM:\n",NUS_SAVE_FLASH_CMD_STATUS)
+	Dump(inbuf,&H80,CART_BASEADR_SRAM)
+
+	FT_Read(hFT,inbuf,&H80,inSize)
+	printf(ex"\nTop of FlashRAM:\n",NUS_SAVE_FLASH_CMD_STATUS)
+	Dump(inbuf,&H80,CART_BASEADR_SRAM)
+
+End Sub
+
+Sub SaveFlash_CmdReadEnable()
+	SaveFlash_Command(NUS_SAVE_FLASH_CMD_READ)
+End Sub
+
+Sub SaveFlash_CmdStatus()
+	SaveFlash_Command(NUS_SAVE_FLASH_CMD_STATUS)
+
+	NUS_SetAddress(CART_BASEADR_SRAM)
+	NUS_readRequest(&H4)
+	SaveFlash_Command(NUS_SAVE_FLASH_CMD_READ)
+End Sub
+
+Type SAVE_FLASH_STATUS
+	data[6] As Byte
+	chip_id AS Byte
+End Type
+
+Sub SaveFlash_CmdStatusImmdate(buf AS *SAVE_FLASH_STATUS)
+	
+	SaveFlash_CmdStatus()
+
+	Dim inSize AS DWord
+	FTDI_SendCommand()
+	FT_Read(hFT,buf,&H8,inSize)
+
+	printf(ex"FlashRAM command 0x%X results:\n",NUS_SAVE_FLASH_CMD_STATUS)
+	Dump(buf,&H8,CART_BASEADR_SRAM)
+End Sub
+
+Enum NUS_FLASH_CHIP_ID
+	MX29L1100KC=&H1E
+	MX29L1101KC=&H1D
+	MN63F81MPM=&HF1
+End Enum
+
+Function SaveFlash_GetFlashChipLabel(id AS Byte) As BytePtr
+	Dim FlashType As BytePtr
+	Select Case id
+		Case MX29L1100KC
+			FlashType = "MX29L1100KC-15B0"
+		Case MX29L1101KC
+			FlashType = "MX29L1101KC-15B0"	'未確認
+		Case MN63F81MPM
+			FlashType = "NUS MN63F81MPM"
+		Case Else
+			FlashType = "Unknown"
+	End Select
+	SaveFlash_GetFlashChipLabel=FlashType
+End Function
+
+Function SaveFlash_Detect() As NUS_SAVE_TYPE
+	Dim status AS SAVE_FLASH_STATUS
+	SaveFlash_CmdStatusImmdate(VarPtr(status))
+
+	if GetDWord(status.data) = &H01801111 Then
+		if status.chip_id = MX29L1100KC Then
+			SaveFlash_Detect=NUS_SAVE_FLASH_WORD
+		Else
+			SaveFlash_Detect=NUS_SAVE_FLASH_BYTE
+		End If
+			
+		Dim FlashType As BytePtr
+		FlashType=SaveFlash_GetFlashChipLabel(status.chip_id)
+		printf(ex"Flash Type: %s\n",FlashType)
+	Else
+		SaveFlash_Detect=NUS_SAVE_UNKNOWN
+	End If
+End Function
+
+Const SaveSram_Detect_SloveSize=128
+Const SaveSram_Detect_FFFill_CRC = &H652d544c
+Function SaveSram_Detect() As BOOL
+	NUS_SetAddress(CART_BASEADR_SRAM)
+	NUS_readRequest(SaveSram_Detect_SloveSize>>1)
+
+	Dim inbuf[SaveSram_Detect_SloveSize] AS Byte,inSize AS DWord
+	FTDI_SendCommand()
+	FT_Read(hFT,inbuf,SaveSram_Detect_SloveSize,inSize)
+
+
+	Dim hash AS DWord
+	hash = crc32.GetHash(inbuf, NUS_SLOVE_SAMPLE_SIZE)
+	if hash <> SaveSram_Detect_FFFill_CRC Then
+		printf(ex"may be sram found\n")
+		Dump(inbuf, SaveSram_Detect_SloveSize)
+		printf(ex"hash=%x\n", hash)
+		SaveSram_Detect=TRUE
+	Else
+		SaveSram_Detect=FALSE
+	End If
+End Function
+
+
+Enum NUS_SAVE_TYPE
+	NUS_SAVE_NONE=0
+	NUS_SAVE_SRAM
+	NUS_SAVE_FLASH_BYTE
+	NUS_SAVE_FLASH_WORD
+	NUS_SAVE_EEPROM
+	NUS_SAVE_UNKNOWN
+	_NUS_SAVE_TYPE_NUM
+End Enum
+
+Dim NUS_SAVE_TYPE_LABEL[_NUS_SAVE_TYPE_NUM] = [
+	"NUS_SAVE_NONE",
+	"NUS_SAVE_SRAM",
+	"NUS_SAVE_FLASH (Byte)",
+	"NUS_SAVE_FLASH (Word)",
+	"NUS_SAVE_EEPROM",
+	"NUS_SAVE_UNKNOWN"
+] As BytePtr
+
+
+Function SloveSaveType() As NUS_SAVE_TYPE
+	Dim ret As NUS_SAVE_TYPE
+	ret = SaveFlash_Detect()
+	if ret<>NUS_SAVE_UNKNOWN Then
+		SloveSaveType = ret
+	Else
+		if SaveSram_Detect() Then
+			SloveSaveType = NUS_SAVE_SRAM
+		Else
+			'現時点でEEPROMかセーブなしか判定できないのでUnknownを返す
+			SloveSaveType = NUS_SAVE_UNKNOWN
+		End If
+	End If
+End Function
+
+Function GetSaveTypeLabel(stype As NUS_SAVE_TYPE) As BytePtr
+	if stype>=_NUS_SAVE_TYPE_NUM then stype=NUS_SAVE_UNKNOWN
+	GetSaveTypeLabel = NUS_SAVE_TYPE_LABEL[stype AS DWord]
+End Function
+
+
+
+Function DumpSram(fileName As BytePtr,SramSize As DWord,SaveType AS NUS_SAVE_TYPE)(BaseAddress As DWord, BufferSize AS DWord) As Long
+	Dim out As File ,inbuf As BytePtr,inSize As DWord
+	Dim reqAdr=&H0 As DWord
+	Dim IsWordAddressing As BOOL
+
+	if BaseAddress=0 Then 
+		BaseAddress=CART_BASEADR_SRAM
+	Endif
+
+	if BufferSize=0 Then 
+		BufferSize=128 ' bytes
+	Endif
+
+	if SaveType=NUS_SAVE_FLASH_WORD Then
+		IsWordAddressing = TRUE
+	Else
+		IsWordAddressing = FALSE
+	End If
+
+	inbuf=calloc(BufferSize)
+	if out.openFile(fileName,GENERIC_WRITE) = FALSE Then
+		Print "Failed to create file."
+		ExitFunction
+	End If
+
+	flush()
+	N64PowerON()
+
+	NUS_SetAddress(BaseAddress)
+	if FTDI_SendCommand()<>FT_OK Then Goto *DFR_EXIT
+
+	Print "dumping data..."
+	Dim time As DWord,lt As DWord, retry As DWord
+	time=GetTickCount()
+	Do
+		if reqAdr=>SramSize Then ExitDo
+		
+		if IsWordAddressing Then
+			NUS_SetAddress(BaseAddress + (reqAdr>>1))
+		Else
+			NUS_SetAddress(BaseAddress + reqAdr)
+		End If
+		NUS_readRequest(BufferSize>>1)
+
+		if FTDI_SendCommand()<>FT_OK Then Goto *DFR_EXIT
+		if FT_Read(hFT,inbuf,BufferSize,inSize)<>FT_OK Then Goto *DFR_EXIT
+		if inSize <> BufferSize Then
+			printf(ex"receive size error.\n")
+			retry++
+			if retry>5 then Goto *DFR_EXIT
+			Continue
+		End If
+
+		out.write(inbuf,BufferSize)
+		reqAdr+=BufferSize
+
+		if reqAdr Mod (&H500*2) = 0 Then 
+			ConsoleReturnLine()
+			printf(ex"Address=%08X ... %d%%  [%dKB/s]          ",reqAdr,(reqAdr/SramSize)*100,reqAdr/(GetTickCount()-time))
+			if GetKeyState(VK_ESCAPE) And &H80 Then Print ex"\n[ESC]Cancelled by user.":Goto *DFR_EXIT
+			
+		End If
+
+	Loop
+	lt=GetTickCount()-time
+	printf(ex"\nDump Successfull !\nTime:%dms = %ds = %dmin\n",lt,lt/1000,lt/1000/60)
+	DumpSram=TRUE
+
+*DFR_EXIT
+	free(inbuf)
+	out.close()
+	N64PowerOFF()
+
+End Function
+
+/*
+N64 ROM Infomation
+        Title    : THE MASK OF MUJURA
+        GameID   : NUS-NZSJ
+        Version  : 1.1
+        CIC Type : NUS-CIC-6105
+        CRC1     : 0x69AE0438
+        CRC2     : 0x2C63F3F3
+        EntryPtr : 0x80080000
+        Compress : No
+        ROM Size : 32 MB (256Mbit) [推定] ::: detect header
+
+[SELECT OPERATION]
+        1.DUMP FULL ROM
+        2.INPUT ROM SIZE AND DUMP
+        3.SRAM DUMP [TEST]
+        4.ROM VIEWER
+        5.EXIT
+> 40
+
+ ADDRESS  00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F  0123456789ABCDEF
+E1000000  11 11 80 01 00 C2 00 1E 11 11 80 01 00 C2 00 1E  ...ﾂ.....ﾂ..
+E1000010  11 11 80 01 00 C2 00 1E 11 11 80 01 00 C2 00 1E  ...ﾂ.....ﾂ..
+E1000020  00 00 D8 70 00 01 00 00 00 00 00 00 3F FF 00 00  ..ﾘp........?...
+E1000030  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+*/
+/*
+N64 ROM Infomation
+        Title    : POKEMON SNAP
+        GameID   : NUS-NPFJ
+        Version  : 1.0
+        CIC Type : NUS-CIC-6103
+        CRC1     : 0xEC0F690D
+        CRC2     : 0x32A7438C
+        EntryPtr : 0x80100400
+        Compress : No
+        ROM Size : 16 MB (128Mbit) [推定] ::: detect 0xFF fill
+
+[SELECT OPERATION]
+        1.DUMP FULL ROM
+        2.INPUT ROM SIZE AND DUMP
+        3.SRAM DUMP [TEST]
+        4.ROM VIEWER
+        5.EXIT
+> 40
+
+ ADDRESS  00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F  0123456789ABCDEF
+E1000000  11 11 80 01 00 C2 00 1E 11 11 80 01 00 C2 00 1E  ...ﾂ.....ﾂ..
+E1000010  11 11 80 01 00 C2 00 1E 11 11 80 01 00 C2 00 1E  ...ﾂ.....ﾂ..
+E1000020  16 E9 C3 49 4D 0E 86 AB 14 53 89 C1 C3 B9 2C 34  .鯏IM.・.S加ﾃｹ,4
+E1000030  48 41 4C 5F 53 4E 41 50 5F 56 31 2E 30 2D 31 00  HAL_SNAP_V1.0-1.
+
+基板を見るとMX29L1100
+*/
+/*
+N64 ROM Infomation
+        Title    : MARIO STORY
+        GameID   : NUS-NMQJ
+        Version  : 1.0
+        CIC Type : NUS-CIC-6103
+        CRC1     : 0x3BA7CDDC
+        CRC2     : 0x464E52A0
+        EntryPtr : 0x80125C00
+        Compress : No
+        ROM Size : 40 MB (320Mbit) [推定] ::: detect repeat
+
+[SELECT OPERATION]
+        1.DUMP FULL ROM
+        2.INPUT ROM SIZE AND DUMP
+        3.SRAM DUMP [TEST]
+        4.ROM VIEWER
+        5.EXIT
+> 40
+
+ ADDRESS  00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F  0123456789ABCDEF
+E1000000  11 11 80 01 00 C2 00 1E 11 11 80 01 00 C2 00 1E  ...ﾂ.....ﾂ..
+E1000010  11 11 80 01 00 C2 00 1E 11 11 80 01 00 C2 00 1E  ...ﾂ.....ﾂ..
+E1000020  4D 61 72 69 6F 20 53 74 6F 72 79 20 30 30 36 00  Mario Story 006.
+E1000030  E0 00 E0 00 E0 00 E0 00 E0 00 E0 00 E0 00 E0 00  ・・・・・・・・
+*/
+/*
+ === 64MB === CD09BE7E
+N64 ROM Infomation
+        Title    : POKEMON STADIUM G&S
+        GameID   : NUS-NP3J
+        Version  : 1.0
+        CIC Type : NUS-CIC-6103
+        CRC1     : 0xEE4FD7C2
+        CRC2     : 0x9CF1D938
+        EntryPtr : 0x80100400
+        Compress : No
+        ROM Size : 64 MB (512Mbit) [推定] ::: detect header
+
+[SELECT OPERATION]
+        1.DUMP FULL ROM
+        2.INPUT ROM SIZE AND DUMP
+        3.SRAM DUMP [TEST]
+        4.ROM VIEWER
+        5.EXIT
+> 40
+
+ ADDRESS  00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F  0123456789ABCDEF
+E1000000  11 11 80 01 00 32 00 F1 FF FF FF FF FF FF FF FF  ...2.・.......
+E1000010  FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF  ................
+E1000020  01 00 00 00 50 00 00 00 00 00 00 00 00 00 00 00  ....P...........
+E1000030  07 00 39 2C 3B F0 00 00 00 10 2C 14 AF C8 AF C8  ..9,;・...,.ｯﾈｯﾈ
+
+MN63F81MPN
+*/
+
+/*
+N64 ROM Infomation
+        Title    : POKEMON STADIUM 2
+        GameID   : NUS-CP2J
+        Version  : 1.0
+        CIC Type : NUS-CIC-6103
+        CRC1     : 0x63775886
+        CRC2     : 0x5FB80E7B
+        EntryPtr : 0x80100400
+        Compress : No
+        ROM Size : 32 MB (256Mbit) [推定] ::: detect header
+
+[SELECT OPERATION]
+        1.DUMP FULL ROM
+        2.INPUT ROM SIZE AND DUMP
+        3.SRAM DUMP [TEST]
+        4.ROM VIEWER
+        5.EXIT
+> 40
+
+ ADDRESS  00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F  0123456789ABCDEF
+E1000000  11 11 80 01 00 C2 00 1E 11 11 80 01 00 C2 00 1E  ...ﾂ.....ﾂ..
+E1000010  11 11 80 01 00 C2 00 1E 11 11 80 01 00 C2 00 1E  ...ﾂ.....ﾂ..
+E1000020  00 01 5D 50 00 00 00 00 00 00 00 06 5B 00 93 32  ..]P........[.・
+E1000030  00 05 15 00 38 0E 19 68 00 00 01 E8 48 64 00 64  ....8..h...鍠d.d
+*/
+/*
+N64 ROM Infomation
+        Title    : STAR TWINS
+        GameID   : NUS-NJFJ
+        Version  : 1.0
+        CIC Type : NUS-CIC-6105
+        CRC1     : 0xF163A242
+        CRC2     : 0xF2449B3B
+        EntryPtr : 0x80000400
+        Compress : No
+        ROM Size : 32 MB (256Mbit) [推定] ::: detect header
+
+[SELECT OPERATION]
+        1.DUMP FULL ROM
+        2.INPUT ROM SIZE AND DUMP
+        3.SRAM DUMP [TEST]
+        4.ROM VIEWER
+        5.EXIT
+> 40
+
+ ADDRESS  00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F  0123456789ABCDEF
+E1000000  11 11 80 01 00 C2 00 1E 11 11 80 01 00 C2 00 1E  ...ﾂ.....ﾂ..
+E1000010  11 11 80 01 00 C2 00 1E 11 11 80 01 00 C2 00 1E  ...ﾂ.....ﾂ..
+E1000020  00 43 06 00 00 00 0F 00 5E 00 00 00 00 00 00 00  .C......^.......
+E1000030  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+*/

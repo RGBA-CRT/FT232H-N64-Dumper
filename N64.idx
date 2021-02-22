@@ -11,3 +11,4 @@
 #include "NusCIC.abp"
 #include "N64_HAL.sbp"
 #include "BoardDriver.sbp"
+#include "SaveGame.sbp"
