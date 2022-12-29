@@ -171,7 +171,7 @@ Function ListUpFTDI_Devices() AS Long
 		printf(ex" [%02d]%s - %s\n",i,serial,desc)
 	Next i
 	Print
-	ListUpFTDI_Devices=FT_OK
+	ListUpFTDI_Devices=devCount
 EndFunction
 
 Sub FT_WAIT(val aS Word)

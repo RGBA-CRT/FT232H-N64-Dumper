@@ -1,3 +1,9 @@
+'Todo 
+'- SE
+'- CRCをチェック、カートリッジ接触チェック
+'- 　このチェックが通ったらSaveタイプ判定
+'- ダンプ終わったらDat-OMaticのCRCと比較
+
 /* FT232H,MCP23S17を用いたN64吸出しプログラム [for ActiveBasic v4]
  * RGBA_CRT 2016-2017 [rgba3crt1p@gmail.com]
  * <<< 実験コード・未リファクタリング >>>>
@@ -77,14 +83,22 @@ Dim slowMode AS BOOL
 Main()
 End
 
+
 Sub Main()
 
 
-	Print " - N64 ROM DUMPER with FT232H v1.0 - PROGRAMMED BY RGBA_CRT 2016-2020"
+	Print " - N64 ROM DUMPER with FT232H v1.1 - PROGRAMMED BY RGBA_CRT 2016-2022"
 	Print
 
-	if ListUpFTDI_Devices()<>FT_OK Then End
-	Input "slect device [num] > ",DevIdx
+	DevIdx = ListUpFTDI_Devices()
+	print DevIdx
+	if DevIdx<1 then 
+		end
+	elseif DevIdx=1 Then
+		DevIdx=0
+	Else
+		Input "slect device [num] > ",DevIdx
+	endif
 
 
 	'device open
@@ -137,10 +151,12 @@ Sub Main()
 			memcpy(FileName,header.Title,NUS_TITLE_LEN)
 
 			' ファイル名に使えない文字をエスケープ
-			For i=0 To NUS_TITLE_LEN
-				if FileName[i] = GetByte(":") Then _
+			/*For i=0 To NUS_TITLE_LEN
+				Dim ct As DWord
+				ct = PathGetCharType(FileName[i])
+				if ct = GCT_SEPARATOR or ct = GCT_INVALID  Then _
 					FileName[i] = GetByte("_")
-			Next i
+			Next i*/
 		Endif
 
 		Select Case op
@@ -175,6 +191,9 @@ Sub Main()
 					if save_type=NUS_SAVE_SRAM then
 						adr = 32*1024  As DWord
 						ltsave_ext = ".sra"
+					Elseif save_type=NUS_SAVE_SRAMx3 then
+						adr = 32*1024*3  As DWord
+						ltsave_ext = ".sra"
 					Else if save_type=NUS_SAVE_FLASH_BYTE or save_type=NUS_SAVE_FLASH_WORD then
 						adr = 128*1024 As DWord
 						ltsave_ext = ".fla"
@@ -194,7 +213,7 @@ Sub Main()
 					SaveBE = FileName+MakeStr(".sav")
 					SaveLE = FileName+MakeStr(ltsave_ext)
 					'DumpFullRom(SaveBE,adr,CART_BASEADR_SRAM)
-					DumpSram(SaveBE, adr, save_type, CART_BASEADR_SRAM)
+					DumpSramFile(SaveBE, adr, save_type, CART_BASEADR_SRAM)
 					printf(ex"Saved sram dump for Ares to \q%s\q\n", SaveBE)
 					
 					ConvertLittleEndian(SaveBE,SaveLE)
@@ -374,6 +393,10 @@ Sub Main()
 	Print "END"
 EndSub
 
+Sub NotifySound()
+	MessageBeep(-1)
+End Sub
+
 Sub EnterSlowMode()
 	Print "Slow Mode Eneble"
 	memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x03\x00",7)  :	c+=7	'SlowSpeed For FlashCart
@@ -447,7 +470,7 @@ Function DumpFullRom(fileName As BytePtr,RomSize As DWord)(BaseAddress As DWord)
 
 		if reqAdr Mod (&H5000*2) = 0 Then 
 			ConsoleReturnLine()
-			printf(ex"Address=%08X ... %d%%  [%dKB/s]          ",reqAdr,(reqAdr/RomSize)*100,reqAdr/(GetTickCount()-time))
+			printf(ex"Address=%08X ... %d%%  [%d KB/s]          ",reqAdr,(reqAdr/RomSize)*100,reqAdr/(GetTickCount()-time))
 			if GetKeyState(VK_ESCAPE) And &H80 Then Print ex"\n[ESC]Cancelled by user.":Goto *DFR_EXIT
 		End If
 	'	if reqAdr Mod &H100000 = 0 Then Sleep(200)
@@ -463,6 +486,7 @@ Function DumpFullRom(fileName As BytePtr,RomSize As DWord)(BaseAddress As DWord)
 	out.close()
 	N64PowerOFF()
 
+	NotifySound()
 End Function
 
 '大体のエミュのセーブデータの形式がリトルエンディアン（DWord)
@@ -567,9 +591,9 @@ Function SloveRomSize(reason As *BytePtr) As DWord
 	Dim inbuf[NUS_SLOVE_SAMPLE_SIZE] As BytePtr,i As Long
 	Dim sloveAddress AS DWord
 	Dim headerHash AS DWord, lastHash AS DWord, hash As DWord
-	Const slovePatternCount = 7
+	Const slovePatternCount = 8
 	Dim slovePattern[slovePatternCount] = [
-		0, 4, 8, 12, 16, 32, 40, 64,
+		0, 4, 8, 12, 16, 32, 40, 48, 64,
 	] AS Byte
 
 	N64PowerON()

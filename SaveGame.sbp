@@ -117,8 +117,9 @@ End Function
 
 Const SaveSram_Detect_SloveSize=128
 Const SaveSram_Detect_FFFill_CRC = &H652d544c
-Function SaveSram_Detect() As BOOL
-	NUS_SetAddress(CART_BASEADR_SRAM)
+Function SaveSram_Detect()(base_addr As DWord) As BOOL
+	if base_addr = 0 Then base_addr = CART_BASEADR_SRAM
+	NUS_SetAddress(base_addr)
 	NUS_readRequest(SaveSram_Detect_SloveSize>>1)
 
 	Dim inbuf[SaveSram_Detect_SloveSize] AS Byte,inSize AS DWord
@@ -138,6 +139,25 @@ Function SaveSram_Detect() As BOOL
 	End If
 End Function
 
+Const CART_BASEADR_SRAM_2ND=&H08040000
+Const CART_BASEADR_SRAM_3RD=&H08080000
+Function SaveSramX3_Detect() As BOOL
+	if SaveSram_Detect(CART_BASEADR_SRAM)=FALSE then
+		SaveSramX3_Detect=FALSE
+		exitfunction
+	endif
+	if SaveSram_Detect(CART_BASEADR_SRAM_2ND)=FALSE then
+		SaveSramX3_Detect=FALSE
+		exitfunction
+	endif
+	if SaveSram_Detect(CART_BASEADR_SRAM_3RD)=FALSE then
+		SaveSramX3_Detect=FALSE
+		printf(ex"WARNING: 2nd SRAM found. this is not surpported.\n")
+		exitfunction
+	endif
+	SaveSramX3_Detect=TRUE
+End Function
+
 
 Enum NUS_SAVE_TYPE
 	NUS_SAVE_NONE=0
@@ -145,6 +165,7 @@ Enum NUS_SAVE_TYPE
 	NUS_SAVE_FLASH_BYTE
 	NUS_SAVE_FLASH_WORD
 	NUS_SAVE_EEPROM
+	NUS_SAVE_SRAMx3	' for dezaemon
 	NUS_SAVE_UNKNOWN
 	_NUS_SAVE_TYPE_NUM
 End Enum
@@ -155,6 +176,7 @@ Dim NUS_SAVE_TYPE_LABEL[_NUS_SAVE_TYPE_NUM] = [
 	"NUS_SAVE_FLASH (Byte)",
 	"NUS_SAVE_FLASH (Word)",
 	"NUS_SAVE_EEPROM",
+	"NUS_SAVE_SRAMx3",
 	"NUS_SAVE_UNKNOWN"
 ] As BytePtr
 
@@ -165,7 +187,9 @@ Function SloveSaveType() As NUS_SAVE_TYPE
 	if ret<>NUS_SAVE_UNKNOWN Then
 		SloveSaveType = ret
 	Else
-		if SaveSram_Detect() Then
+		if SaveSramX3_Detect() Then
+			SloveSaveType = NUS_SAVE_SRAMx3
+		Elseif SaveSram_Detect() Then
 			SloveSaveType = NUS_SAVE_SRAM
 		Else
 			'現時点でEEPROMかセーブなしか判定できないのでUnknownを返す
@@ -179,31 +203,49 @@ Function GetSaveTypeLabel(stype As NUS_SAVE_TYPE) As BytePtr
 	GetSaveTypeLabel = NUS_SAVE_TYPE_LABEL[stype AS DWord]
 End Function
 
+Function DumpSramFile(fileName As BytePtr,SramSize As DWord,SaveType AS NUS_SAVE_TYPE)(BaseAddress As DWord) As Long
+	Dim ret = TRUE As Long
+	Dim out As File
+	if out.openFile(fileName,GENERIC_WRITE) = FALSE Then
+		Print "Failed to create file."
+		ExitFunction
+	End If
+
+	Dim buffer As BytePtr
+	buffer=calloc(SramSize)
+
+	if SaveType=NUS_SAVE_SRAMx3 Then
+		ret = DumpSram(buffer + SramSize/3*0, SramSize/3, NUS_SAVE_SRAM, CART_BASEADR_SRAM)
+		ret = DumpSram(buffer + SramSize/3*1, SramSize/3, NUS_SAVE_SRAM, CART_BASEADR_SRAM_2ND)
+		ret = DumpSram(buffer + SramSize/3*2, SramSize/3, NUS_SAVE_SRAM, CART_BASEADR_SRAM_3RD)
+	Else
+		ret = DumpSram(buffer, SramSize, SaveType, BaseAddress)
+	End If
+
+	out.write(buffer, SramSize)
+	free(buffer)
+
+	out.close()
+
+	DumpSramFile = ret
+End Function
 
 
-Function DumpSram(fileName As BytePtr,SramSize As DWord,SaveType AS NUS_SAVE_TYPE)(BaseAddress As DWord, BufferSize AS DWord) As Long
-	Dim out As File ,inbuf As BytePtr,inSize As DWord
-	Dim reqAdr=&H0 As DWord
+Function DumpSram(buffer As BytePtr,SramSize As DWord,SaveType AS NUS_SAVE_TYPE)(BaseAddress As DWord) As Long
+	Dim inSize As DWord
+	Dim readOffset=&H0 As DWord
 	Dim IsWordAddressing As BOOL
 
 	if BaseAddress=0 Then 
 		BaseAddress=CART_BASEADR_SRAM
 	Endif
 
-	if BufferSize=0 Then 
-		BufferSize=128 ' bytes
-	Endif
+	Const BufferSize=128 ' bytes
 
 	if SaveType=NUS_SAVE_FLASH_WORD Then
 		IsWordAddressing = TRUE
 	Else
 		IsWordAddressing = FALSE
-	End If
-
-	inbuf=calloc(BufferSize)
-	if out.openFile(fileName,GENERIC_WRITE) = FALSE Then
-		Print "Failed to create file."
-		ExitFunction
 	End If
 
 	flush()
@@ -216,17 +258,17 @@ Function DumpSram(fileName As BytePtr,SramSize As DWord,SaveType AS NUS_SAVE_TYP
 	Dim time As DWord,lt As DWord, retry As DWord
 	time=GetTickCount()
 	Do
-		if reqAdr=>SramSize Then ExitDo
+		if readOffset=>SramSize Then ExitDo
 		
 		if IsWordAddressing Then
-			NUS_SetAddress(BaseAddress + (reqAdr>>1))
+			NUS_SetAddress(BaseAddress + (readOffset>>1))
 		Else
-			NUS_SetAddress(BaseAddress + reqAdr)
+			NUS_SetAddress(BaseAddress + readOffset)
 		End If
 		NUS_readRequest(BufferSize>>1)
 
 		if FTDI_SendCommand()<>FT_OK Then Goto *DFR_EXIT
-		if FT_Read(hFT,inbuf,BufferSize,inSize)<>FT_OK Then Goto *DFR_EXIT
+		if FT_Read(hFT,buffer + readOffset,BufferSize,inSize)<>FT_OK Then Goto *DFR_EXIT
 		if inSize <> BufferSize Then
 			printf(ex"receive size error.\n")
 			retry++
@@ -234,12 +276,11 @@ Function DumpSram(fileName As BytePtr,SramSize As DWord,SaveType AS NUS_SAVE_TYP
 			Continue
 		End If
 
-		out.write(inbuf,BufferSize)
-		reqAdr+=BufferSize
+		readOffset+=BufferSize
 
-		if reqAdr Mod (&H500*2) = 0 Then 
+		if readOffset Mod (&H500*2) = 0 Then 
 			ConsoleReturnLine()
-			printf(ex"Address=%08X ... %d%%  [%dKB/s]          ",reqAdr,(reqAdr/SramSize)*100,reqAdr/(GetTickCount()-time))
+			printf(ex"Address=%08X ... %d%%  [%dKB/s]          ",readOffset,(readOffset/SramSize)*100,readOffset/(GetTickCount()-time))
 			if GetKeyState(VK_ESCAPE) And &H80 Then Print ex"\n[ESC]Cancelled by user.":Goto *DFR_EXIT
 			
 		End If
@@ -250,8 +291,6 @@ Function DumpSram(fileName As BytePtr,SramSize As DWord,SaveType AS NUS_SAVE_TYP
 	DumpSram=TRUE
 
 *DFR_EXIT
-	free(inbuf)
-	out.close()
 	N64PowerOFF()
 
 End Function

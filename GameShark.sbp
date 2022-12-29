@@ -29,6 +29,7 @@ Function GS_GetHeader(gs_header AS *NUS_GS_HEADER	) AS BOOL
 	memcpy(gs_header, inbuf, sizeof(NUS_GS_HEADER))
 End Function
 
+Const GS_BIOS_SIZE = 256*1024
 Sub GS_Dump()
 	Dim GsHeader AS NUS_GS_HEADER
 	N64PowerON()
@@ -58,7 +59,7 @@ Sub GS_Dump()
 	
 	printf(ex"Dumping")
 	Dim buffer[512] AS Byte, inBuf AS DWord, inSize AS DWord
-	For i=0 To (256*1024/NUS_DUMP_BUFFER_SIZE)-1
+	For i=0 To (GS_BIOS_SIZE/NUS_DUMP_BUFFER_SIZE)-1
 		NUS_SetAddress(NUS_GS_BIOS_OFFSET + i*NUS_DUMP_BUFFER_SIZE)
 		NUS_readRequest(NUS_DUMP_BUFFER_SIZE/2)
 
@@ -217,15 +218,19 @@ Function GS_WriteFromFile(filename AS BytePtr) AS BOOL
 	Endif
 
 	GS_EraseFlash() 
+
+	Dim size As Long
+	size = in.length()
+	if size>GS_BIOS_SIZE then size = GS_BIOS_SIZE
 	
-	buf = calloc( in.length() )
-	in.read( buf, in.length() )
+	buf = calloc( size )
+	in.read( buf, size )
 
 	N64PowerON()
 	FTDI_SendCommand()
 	Sleep(10)
 
-	GS_WriteFlash( buf, in.length() )
+	GS_WriteFlash( buf, size )
 				
 	N64PowerOFF()
 	FTDI_SendCommand()
