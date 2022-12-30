@@ -586,7 +586,9 @@ Sub PrintRomInfo(header AS *NUS_ROM_HEADER)
 End Sub
 
 Const NUS_SLOVE_SAMPLE_SIZE = &H80
-Const NUS_SLOVE_FF_FILL_HASH = &H652D544C ' SampleSize変わるたびに更新必要
+Const NUS_SLOVE_FF_FILL_HASH = &H8F05A5BF ' SampleSize変わるたびに更新必要
+Const NUS_SLOVE_00_FILL_HASH = &H15D70E0C ' SampleSize変わるたびに更新必要
+'ROMサイズを推測する
 Function SloveRomSize(reason As *BytePtr) As DWord
 	Dim inbuf[NUS_SLOVE_SAMPLE_SIZE] As BytePtr,i As Long
 	Dim sloveAddress AS DWord
@@ -598,7 +600,6 @@ Function SloveRomSize(reason As *BytePtr) As DWord
 
 	N64PowerON()
 
-	'ROMサイズの推測
 	For i=0 To slovePatternCount
 		' READ
 		sloveAddress = CART_BASEADR_ROM + (slovePattern[i] * 1024*1024)
@@ -607,15 +608,16 @@ Function SloveRomSize(reason As *BytePtr) As DWord
 		if FTDI_SendCommand()<>FT_OK Then ExitFunction
 		if FT_Read(hFT,inbuf,NUS_SLOVE_SAMPLE_SIZE,dwAB)<>FT_OK Then Goto *SRS_EXIT
 
-		'TEST
-		hash = crc32.GetHash(inbuf, NUS_SLOVE_SAMPLE_SIZE)
+		'先頭4バイトが化けるケースがあるため除外
+		' Ref: https://twitter.com/HelicopterP64/status/1608487105562546176
+		hash = crc32.GetHash(inbuf+4, NUS_SLOVE_SAMPLE_SIZE-4)
 #ifdef _DEBUG
 		printf(ex" === %dMB === %X \n", slovePattern[i], hash)
-'		D'mp(inbuf,64,sloveAddress,TRUE)
 #endif
 
 		' CHECK FF FILL
 		if hash = NUS_SLOVE_FF_FILL_HASH Then reason[0]="detect 0xFF fill":ExitFor
+		if hash = NUS_SLOVE_00_FILL_HASH Then reason[0]="detect 0x00 fill":ExitFor
 
 		if i=0 Then
 			' MEMORY HEADER 
@@ -665,16 +667,17 @@ Sub PrintBuffer()
 End Sub
 
 
+Const TEST_DUMP_BLOCK_SIZE = &H10
 Sub testDump(Adr AS DWord)
 	N64PowerON()
 	NUS_SetAddress(NUS_GS_HEADER_OFFSET + Adr)
-	NUS_readRequest(128/2)
+	NUS_readRequest(TEST_DUMP_BLOCK_SIZE/2)
 
-	Dim inbuf[128] AS Byte,inSize AS DWord
+	Dim inbuf[TEST_DUMP_BLOCK_SIZE] AS Byte,inSize AS DWord
 	FTDI_SendCommand()
-	FT_Read(hFT,inbuf,128,inSize)
+	FT_Read(hFT,inbuf,TEST_DUMP_BLOCK_SIZE,inSize)
 
-	Dump(inbuf,128,CART_BASEADR_ROM + Adr)
+	Dump(inbuf,TEST_DUMP_BLOCK_SIZE,CART_BASEADR_ROM + Adr)
 
 	N64PowerOFF()
 '	Sleep(1000)
