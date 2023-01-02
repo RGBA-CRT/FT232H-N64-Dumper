@@ -128,7 +128,7 @@ Function SaveSram_Detect()(base_addr As DWord) As BOOL
 
 
 	Dim hash AS DWord
-	hash = crc32.GetHash(inbuf, NUS_SLOVE_SAMPLE_SIZE)
+	hash = crc32.GetHash(inbuf, NUS_SLOVE_SAMPLE_SIZE1)
 	if hash <> SaveSram_Detect_FFFill_CRC Then
 		printf(ex"may be sram found\n")
 		Dump(inbuf, SaveSram_Detect_SloveSize)

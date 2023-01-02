@@ -585,14 +585,57 @@ Sub PrintRomInfo(header AS *NUS_ROM_HEADER)
 
 End Sub
 
-Const NUS_SLOVE_SAMPLE_SIZE = &H80
-Const NUS_SLOVE_FF_FILL_HASH = &H8F05A5BF ' SampleSize変わるたびに更新必要
-Const NUS_SLOVE_00_FILL_HASH = &H15D70E0C ' SampleSize変わるたびに更新必要
+Const NUS_SLOVE_SAMPLE_SIZE1 = &H80
+Const NUS_SLOVE_SAMPLE_SIZE2 = &H10
+Const NUS_SLOVE_FF_FILL_HASH = &H652D544C ' SampleSize変わるたびに更新必要
+Const NUS_SLOVE_00_FILL_HASH = &HC2A8FA9D ' SampleSize変わるたびに更新必要
+
+Function NUS_ReadDataSingle(buffer As BytePtr,address AS DWord, size AS DWord) As BOOL
+	if size>NUS_DUMP_BUFFER_SIZE then exitfunction
+	
+	NUS_SetAddress(address)
+	NUS_readRequest(size/2)
+	if FTDI_SendCommand()<>FT_OK Then ExitFunction
+	if FT_Read(hFT,buffer,size,dwAB)<>FT_OK Then ExitFunction
+
+	NUS_ReadDataSingle=TRUE
+End Function
+
+Function NUS_ReadData(buffer As BytePtr,address AS DWord, size AS DWord)(blockSize As DWord) As BOOL
+	if blockSize = 0 then
+		blockSize=NUS_DUMP_BUFFER_SIZE
+	End If
+
+	Dim i AS DWord, offset =0 As DWord,readSize AS DWord, loop_num As DWord
+	loop_num = size/blockSize
+	if size Mod blockSize then loop_num+=1
+	'printf(ex"READ DATA adr=%p sizse=%p blockSizse=%p loopn=%d\n",address,size,blockSize,loop_num)
+	For i = 0 To loop_num-1
+		offset = i*blockSize
+		if i<>loop_num then
+			readSize = blockSize
+		Else
+			readSize = size Mod blockSize
+		End If
+	'	printf(ex" - %d %d\n", i, readSize)
+		if NUS_ReadDataSingle(buffer + offset, address+offset, readSize) <> TRUE Then Exitfunction
+	Next i
+
+	NUS_ReadData = TRUE
+End Function
+
+Function NUS_GetHash(address AS DWord, size AS DWord)(blockSize As DWord) As DWord
+	Dim buf[NUS_DUMP_BUFFER_SIZE] AS Byte
+	if NUS_ReadData(buf, address, size, blockSize) <> TRUE Then ExitFunction
+'	FillMemory(buf,size,&H00)
+	NUS_GetHash = crc32.GetHash(buf, size)
+End Function
+
 'ROMサイズを推測する
 Function SloveRomSize(reason As *BytePtr) As DWord
-	Dim inbuf[NUS_SLOVE_SAMPLE_SIZE] As BytePtr,i As Long
+	Dim i As Long
 	Dim sloveAddress AS DWord
-	Dim headerHash AS DWord, lastHash AS DWord, hash As DWord
+	Dim headerHash AS DWord, lastHash AS DWord, hash As DWord, hash2 AS DWord
 	Const slovePatternCount = 8
 	Dim slovePattern[slovePatternCount] = [
 		0, 4, 8, 12, 16, 32, 40, 48, 64,
@@ -603,21 +646,19 @@ Function SloveRomSize(reason As *BytePtr) As DWord
 	For i=0 To slovePatternCount
 		' READ
 		sloveAddress = CART_BASEADR_ROM + (slovePattern[i] * 1024*1024)
-		NUS_SetAddress(sloveAddress)
-		NUS_readRequest(NUS_SLOVE_SAMPLE_SIZE/2)
-		if FTDI_SendCommand()<>FT_OK Then ExitFunction
-		if FT_Read(hFT,inbuf,NUS_SLOVE_SAMPLE_SIZE,dwAB)<>FT_OK Then Goto *SRS_EXIT
-
-		'先頭4バイトが化けるケースがあるため除外
-		' Ref: https://twitter.com/HelicopterP64/status/1608487105562546176
-		hash = crc32.GetHash(inbuf+4, NUS_SLOVE_SAMPLE_SIZE-4)
+		
+		'データ不定領域の判定のため、1回の転送ブロックサイズを変えた2回の読み出しをする
+		' Ref: https://twitter.com/HelicopterP64/status/1608976626125275137
+		hash = NUS_GetHash(sloveAddress, NUS_SLOVE_SAMPLE_SIZE1, NUS_SLOVE_SAMPLE_SIZE1)
+		hash2 = NUS_GetHash(sloveAddress, NUS_SLOVE_SAMPLE_SIZE1, NUS_SLOVE_SAMPLE_SIZE2)
 #ifdef _DEBUG
-		printf(ex" === %dMB === %X \n", slovePattern[i], hash)
+		printf(ex" === %dMB === %08X %08X \n", slovePattern[i], hash, hash2)
 #endif
 
 		' CHECK FF FILL
 		if hash = NUS_SLOVE_FF_FILL_HASH Then reason[0]="detect 0xFF fill":ExitFor
 		if hash = NUS_SLOVE_00_FILL_HASH Then reason[0]="detect 0x00 fill":ExitFor
+		if hash <> hash2 Then reason[0]="detect unstable area":ExitFor
 
 		if i=0 Then
 			' MEMORY HEADER 
