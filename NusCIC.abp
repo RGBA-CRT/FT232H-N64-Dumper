@@ -1,63 +1,63 @@
 'CIC
 Const NUS_BOOT_START = CART_BASEADR_ROM + &H00000040
 Const HASH_START = &H000005C0 ' N64 Boot Code Å`
-Const HASH_SIZE  = &H00000040
+Const HASH_SIZE = &H00000040
 
 Enum NUS_CIC_TYPE
-	NUS_CIC_6101,
-	NUS_CIC_6102,
-	NUS_CIC_6103,
-	NUS_CIC_6105,
-	NUS_CIC_6106,
+	NUS_CIC_6101, 
+	NUS_CIC_6102, 
+	NUS_CIC_6103, 
+	NUS_CIC_6105, 
+	NUS_CIC_6106, 
 	NUS_CIC_UNKNOWN
 	NUS_CIC_COUNT
 End Enum
 
 Dim CicHashTable[NUS_CIC_COUNT] = [
-    &HC3EAFB0F, /* 6101.bin */
-    &H0E03B22D, /* 6102.bin */
-    &HBBC704B7, /* 6103.bin */
-    &HFD575A13, /* 6105.bin */
-    &H30A3CE55, /* 6106.bin */
+ &HC3EAFB0F, /* 6101.bin */
+ &H0E03B22D, /* 6102.bin */
+ &HBBC704B7, /* 6103.bin */
+ &HFD575A13, /* 6105.bin */
+ &H30A3CE55, /* 6106.bin */
 	&HFFFFFFFF
-] AS DWord
+] As DWord
 
 
 Dim CicLabelTable[NUS_CIC_COUNT] = [
-	"NUS-CIC-6101",
-	"NUS-CIC-6102",
-	"NUS-CIC-6103",
-	"NUS-CIC-6105",
-	"NUS-CIC-6106",
-	"UNKNOWN CIC",
-	"<<NULL>>",
-] AS BytePtr
+	"NUS-CIC-6101", 
+	"NUS-CIC-6102", 
+	"NUS-CIC-6103", 
+	"NUS-CIC-6105", 
+	"NUS-CIC-6106", 
+	"UNKNOWN CIC", 
+	"<<NULL>>", 
+] As BytePtr
 
 
-Function NUS_JudgeCicType(data As BytePtr, length AS DWord) AS Long
-	if length <> HASH_SIZE Then ExitFunction
+Function NUS_JudgeCicType(data As BytePtr, length As DWord) As Long
+	if length <> HASH_SIZE then ExitFunction
 
-	Dim bootHash AS DWord
+	Dim bootHash As DWord
 	bootHash = crc32.GetHash(data, HASH_SIZE)
 
-	Dim i AS Long
+	Dim i As Long
 	NUS_JudgeCicType = NUS_CIC_UNKNOWN
 	For i = 0 To NUS_CIC_COUNT
-		if bootHash = CicHashTable[i] Then NUS_JudgeCicType = i
+		if bootHash = CicHashTable[i] then NUS_JudgeCicType = i
 	Next i
 
 	ExitFunction
 End Function
 
-Function NUS_GetCicType(hFT AS HANDLE) AS Long
+Function NUS_GetCicType(hFT As HANDLE) As Long
 	NUS_SetAddress(NUS_BOOT_START + HASH_START)
 	NUS_readRequest(HASH_SIZE/2)
 
-	Dim inbuf[HASH_SIZE] AS Byte,inSize AS DWord
+	Dim inbuf[HASH_SIZE] As Byte, inSize As DWord
 	FTDI_SendCommand()
-	FT_Read(hFT,inbuf,HASH_SIZE,inSize)
+	FT_Read(hFT, inbuf, HASH_SIZE, inSize)
 
 	'Dump(inbuf, inSize)
 
-	NUS_GetCicType = NUS_JudgeCicType(inbuf, inSize) 
+	NUS_GetCicType = NUS_JudgeCicType(inbuf, inSize)
 End Function

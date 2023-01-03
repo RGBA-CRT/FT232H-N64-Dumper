@@ -2,44 +2,44 @@
 
 '--------------------------------- MCP23S17 AREA ----------------------------------------------
 #include"MCP23017_Lib.sbp"
-Const MCP_CONTROLBYTE_WRITE=&H40
-Const MCP_CONTROLBYTE_READ =&H41
+Const MCP_CONTROLBYTE_WRITE = &H40
+Const MCP_CONTROLBYTE_READ = &H41
 
-'dir: 1=input 0=output
-Sub MCP_SetPort(dir As Word,value As Word) 
+'dir: 1 = input 0 = output
+Sub MCP_SetPort(dir As Word, value As Word)
 	Dim spi_out_buf[3] As Byte
 	SPI_CS(SPI_CS_LOW)
-		spi_out_buf[0]=MCP_CONTROLBYTE_WRITE
-		spi_out_buf[1]=MCP23017_IODIRA
-		spi_out_buf[2]=dir	and &H00FF
-		spi_out_buf[3]=dir>>8
-		MakeSendData(spi_out_buf,4)
+		spi_out_buf[0] = MCP_CONTROLBYTE_WRITE
+		spi_out_buf[1] = MCP23017_IODIRA
+		spi_out_buf[2] = dir	and &H00FF
+		spi_out_buf[3] = dir>>8
+		MakeSendData(spi_out_buf, 4)
 	SPI_CS(SPI_CS_HIGH)
 	SPI_CS(SPI_CS_LOW)
-		spi_out_buf[0]=MCP_CONTROLBYTE_WRITE
-		spi_out_buf[1]=MCP23017_GPIOA
-		spi_out_buf[2]=value and &H00FF
-		spi_out_buf[3]=value>>8
-		MakeSendData(spi_out_buf,4)
+		spi_out_buf[0] = MCP_CONTROLBYTE_WRITE
+		spi_out_buf[1] = MCP23017_GPIOA
+		spi_out_buf[2] = value and &H00FF
+		spi_out_buf[3] = value>>8
+		MakeSendData(spi_out_buf, 4)
 	SPI_CS(SPI_CS_HIGH)
 End Sub
 
-Sub MCP_WriteRegister(reg As Byte,value As Byte) 
+Sub MCP_WriteRegister(reg As Byte, value As Byte)
 	Dim spi_out_buf[2] As Byte
 	SPI_CS(SPI_CS_LOW)
-		spi_out_buf[0]=MCP_CONTROLBYTE_WRITE
-		spi_out_buf[1]=reg
-		spi_out_buf[2]=value'	and &H00FF
-		MakeSendData(spi_out_buf,3)
+		spi_out_buf[0] = MCP_CONTROLBYTE_WRITE
+		spi_out_buf[1] = reg
+		spi_out_buf[2] = value'	and &H00FF
+		MakeSendData(spi_out_buf, 3)
 	SPI_CS(SPI_CS_HIGH)
 End Sub
 
 Sub MCP_ReadPortAB()
 	Dim spi_out_buf[2] As Byte
 	SPI_CS(SPI_CS_LOW)
-		spi_out_buf[0]=MCP_CONTROLBYTE_READ
-		spi_out_buf[1]=MCP23017_GPIOA
-		MakeSendData(spi_out_buf,2)
+		spi_out_buf[0] = MCP_CONTROLBYTE_READ
+		spi_out_buf[1] = MCP23017_GPIOA
+		MakeSendData(spi_out_buf, 2)
 		RequestData(2)
 	SPI_CS(SPI_CS_HIGH)
 End Sub
@@ -47,9 +47,9 @@ End Sub
 Sub MCP_ReadRegister(reg As Byte)
 	Dim spi_out_buf[2] As Byte
 	SPI_CS(SPI_CS_LOW)
-		spi_out_buf[0]=MCP_CONTROLBYTE_READ
-		spi_out_buf[1]=reg
-		MakeSendData(spi_out_buf,2)
+		spi_out_buf[0] = MCP_CONTROLBYTE_READ
+		spi_out_buf[1] = reg
+		MakeSendData(spi_out_buf, 2)
 		RequestData(1)
 	SPI_CS(SPI_CS_HIGH)
 End Sub
@@ -61,76 +61,76 @@ End Sub
 Sub InitSPI()
 	/* Setting device by MPSSE command
 	 * [85]LoopBackDisable
-	 * [97]Disable adaptive clocking 
+	 * [97]Disable adaptive clocking
 	 * [8c]Enable 3 Phase Data Clocking
 	 * [8A]Disables the clk divide by 5 to allow for a 60MHz master clock
 	 * [86]Set TCK Clock [0002]->10MHz
 	 */
-	 
 
-'	memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x02\x00",7)  :	c+=7	'NormalSpeed For MaskROM
-'	memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x03\x00",7)  :	c+=7	'SlowSpeed For FlashCart
-'	memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x00\x00",7)  :	c+=7	'OverSpeed
-	memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x00\x00",7)  :	c+=7	'OverSpeed
+
+'	memcpy(outbuf+c, ex"\x85\x97\x8c\x8A\x86\x02\x00", 7) :	c+ = 7	'NormalSpeed For MaskROM
+'	memcpy(outbuf+c, ex"\x85\x97\x8c\x8A\x86\x03\x00", 7) :	c+ = 7	'SlowSpeed For FlashCart
+'	memcpy(outbuf+c, ex"\x85\x97\x8c\x8A\x86\x00\x00", 7) :	c+ = 7	'OverSpeed
+	memcpy(outbuf+c, ex"\x85\x97\x8c\x8A\x86\x00\x00", 7) :	c+ = 7	'OverSpeed
 
 	SPI_CS(1)
 End Sub
 
-Const PORT_SCLK 	= &H01  
-Const PORT_DO 		= &H02  
-Const PORT_DI		= &H04  
-Const PORT_ALERT 	= &H20   'ADBUS5  
-Const PORT_THERM 	= &H80   'ADBUS7  
-Const MSB_FALLING_EDGE_CLOCK_BYTE_OUT 	= &H11  
-Const MSB_RISING_EDGE_CLOCK_BIT_IN 	= &H22  
-Const MSB_RISING_EDGE_CLOCK_BYTE_IN 	= &H20  
-Const SET_DATA_BITS_LOW_BYTE 	= &H80  
-Const READ_DATA_BITS_LOW_BYTE 	= &H81  
+Const PORT_SCLK 	 = &H01
+Const PORT_DO 		 = &H02
+Const PORT_DI		 = &H04
+Const PORT_ALERT 	 = &H20 'ADBUS5
+Const PORT_THERM 	 = &H80 'ADBUS7
+Const MSB_FALLING_EDGE_CLOCK_BYTE_OUT 	 = &H11
+Const MSB_RISING_EDGE_CLOCK_BIT_IN 	 = &H22
+Const MSB_RISING_EDGE_CLOCK_BYTE_IN 	 = &H20
+Const SET_DATA_BITS_LOW_BYTE 	 = &H80
+Const READ_DATA_BITS_LOW_BYTE 	 = &H81
 
 Const SPI_ADBUS_DIR = &HFB	'0b11 11 10 11
 Const SPI_CS_LOW = 0
 Const SPI_CS_HIGH = 8
 
 Sub SPI_CS(bHL As Byte)
-	memcpy(outbuf+c,ex"\x80\x00\xFB",3)
-	if bHL=0 Then
-		FTDI_GPIOA=SPI_CS_LOW  or (FTDI_GPIOA And &HF0)
-	Else
-		FTDI_GPIOA=SPI_CS_HIGH or (FTDI_GPIOA And &HF0)
-	End If
-	outbuf[c+1]=FTDI_GPIOA
-	c+=3
+	memcpy(outbuf+c, ex"\x80\x00\xFB", 3)
+	if bHL = 0 then
+		FTDI_GPIOA = SPI_CS_LOW or (FTDI_GPIOA And &HF0)
+	else
+		FTDI_GPIOA = SPI_CS_HIGH or (FTDI_GPIOA And &HF0)
+	endif
+	outbuf[c+1] = FTDI_GPIOA
+	c+ = 3
 End Sub
 
-Sub MakeSendData(data As BytePtr,length As Word)
-	if length=0 Then ExitSub
+Sub MakeSendData(data As BytePtr, length As Word)
+	if length = 0 then ExitFunction
 	length--
-	outbuf[c+0]=MSB_FALLING_EDGE_CLOCK_BYTE_OUT
-	outbuf[c+1]=length and &H00FF
-	outbuf[c+2]=length>>8
-	memcpy(outbuf+c+3,data,length+1)
-	c+=3+length+1
+	outbuf[c+0] = MSB_FALLING_EDGE_CLOCK_BYTE_OUT
+	outbuf[c+1] = length and &H00FF
+	outbuf[c+2] = length>>8
+	memcpy(outbuf+c+3, data, length+1)
+	c+ = 3+length+1
 End Sub
 
 Sub RequestData(length As Word)
 	length--
-	outbuf[c+0]=MSB_RISING_EDGE_CLOCK_BYTE_IN
-	outbuf[c+1]=length and &H00FF
-	outbuf[c+2]=length>>8
-	c+=3
+	outbuf[c+0] = MSB_RISING_EDGE_CLOCK_BYTE_IN
+	outbuf[c+1] = (length and &H00FF) As Byte
+	outbuf[c+2] = (length>>8) As Byte
+	c+ = 3
 End Sub
 
 '---------------------------------------- FT232HL AREA -------------------------------------------------
 
 Function SetupFTDI_Device(hFT As FT_HANDLE) As Long
 	'セットアップ
-	Dim ftStatus As Long,bufsize As DWord,buf As BytePtr
-	
-	ftStatus = ftStatus or FT_GetQueueStatus(hFT, bufsize)		 ' Get the number of bytes in the FT2232H receive buffer
-	buf=calloc(bufsize)
+	Dim ftStatus As Long, bufsize As DWord, buf As BytePtr
 
-	if (ftStatus = FT_OK) And  (bufsize > 0) Then _
-		FT_Read(hFT, buf, bufsize, dwAB)  'Read out the data from FT2232H receive buffer
+	ftStatus = ftStatus or FT_GetQueueStatus(hFT, bufsize)		 ' Get the number of bytes in the FT2232H receive buffer
+	buf = calloc(bufsize)
+
+	if (ftStatus = FT_OK) And (bufsize > 0) then _
+		FT_Read(hFT, buf, bufsize, dwAB) 'Read out the data from FT2232H receive buffer
 	free(buf)
 
 '	ftStatus = ftStatus or FT_SetFlowControl(hFT, FT_FLOW_DTR_DSR or FT_FLOW_RTS_CTS, 0, 0)
@@ -142,42 +142,42 @@ Function SetupFTDI_Device(hFT As FT_HANDLE) As Long
 	ftStatus = ftStatus or FT_SetBitMode(hFT, &H0, FT_BITMODE_MPSSE)				 	'Enable MPSSE mode
 	Sleep(10)
 
-	if ftStatus<>0 Then
+	if ftStatus <> 0 then
 		Print "fail on initialize FT2232H device! "
-		SetupFTDI_Device=FALSE
+		SetupFTDI_Device = FALSE
 		ExitFunction
-	End If
-	SetupFTDI_Device=TRUE
+	endif
+	SetupFTDI_Device = TRUE
 End Function
 
-Function FTDI_SendCommand() As Long 
-	FTDI_SendCommand=FT_Write(hFT,outbuf,c,dwAB)
-	c=0
+Function FTDI_SendCommand() As Long
+	FTDI_SendCommand = FT_Write(hFT, outbuf, c, dwAB)
+	c = 0
 End Function
 
-Function ListUpFTDI_Devices() AS Long
-	ListUpFTDI_Devices=-1
-	Dim devCount AS Long
+Function ListUpFTDI_Devices() As Long
+	ListUpFTDI_Devices = -1
+	Dim devCount As Long
 
-	if FT_GetNumDevices(devCount,NULL,FT_LIST_BY_NUMBER_ONLY)<>FT_OK Then Print "FTDI Driver Error." : ExitFunction
-	if devCount=0 Then Print "FTDI Device not found.":ExitFunction
-	printf(ex"Found FTDI Devices : %d\n",devCount)
+	if FT_GetNumDevices(devCount, NULL, FT_LIST_BY_NUMBER_ONLY) <> FT_OK then Print "FTDI Driver Error." : ExitFunction
+	if devCount = 0 then Print "FTDI Device not found.":ExitFunction
+	printf(ex"Found FTDI Devices : %d\n", devCount)
 
-	Dim i AS Long
-	Dim serial[64] As Byte,desc[64] As Byte
+	Dim i As Long
+	Dim serial[64] As Byte, desc[64] As Byte
 	For i = 0 To devCount-1
-		if FT_ListDevices(i,serial,FT_LIST_BY_INDEX or FT_OPEN_BY_SERIAL_NUMBER)<>FT_OK Then ExitFunction
-		if FT_ListDevices(i,desc  ,FT_LIST_BY_INDEX or FT_OPEN_BY_DESCRIPTION)<>FT_OK Then ExitFunction
-		printf(ex" [%02d]%s - %s\n",i,serial,desc)
+		if FT_ListDevices(i, serial, FT_LIST_BY_INDEX or FT_OPEN_BY_SERIAL_NUMBER) <> FT_OK then ExitFunction
+		if FT_ListDevices(i, desc , FT_LIST_BY_INDEX or FT_OPEN_BY_DESCRIPTION) <> FT_OK then ExitFunction
+		printf(ex" [%02d]%s - %s\n", i, serial, desc)
 	Next i
 	Print
-	ListUpFTDI_Devices=devCount
-EndFunction
+	ListUpFTDI_Devices = devCount
+End Function
 
-Sub FT_WAIT(val aS Word)
-		outbuf[c]=&H9c		:	c++
-		outbuf[c]=val		:	c++
-		outbuf[c]=val>>8	:	c++
+Sub FT_WAIT(val As Word)
+		outbuf[c] = &H9c		:	c++
+		outbuf[c] = val As Byte		:	c++
+		outbuf[c] = (val>>8) As Byte	:	c++
 End Sub
 
 

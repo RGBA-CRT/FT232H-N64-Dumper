@@ -1,12 +1,12 @@
 '--------------------------------- N64 AREA ----------------------------------------------
 
 Sub NUS_InitPorts()
-	MCP_WriteRegister(MCP23017_GPPUA,&HFF)	'GPIO-A pullup Enable
-	MCP_WriteRegister(MCP23017_GPPUB,&HFF)	'GPIO-B pullup Enable
+	MCP_WriteRegister(MCP23017_GPPUA, &HFF)	'GPIO-A pullup Enable
+	MCP_WriteRegister(MCP23017_GPPUB, &HFF)	'GPIO-B pullup Enable
 
-	FTDI_GPIOA=NUS_WE or NUS_RE	'コントロールpin
+	FTDI_GPIOA = NUS_WE or NUS_RE	'コントロールpin
 	NUS_SetCtrlPin(FTDI_GPIOA)
-	MCP_WriteRegister(MCP23017_IODIRB,SDAT_DDR_IN)
+	MCP_WriteRegister(MCP23017_IODIRB, SDAT_DDR_IN)
 	N64PowerOFF()
 End Sub
 
@@ -15,141 +15,141 @@ End Sub
 '0x80コマンドを使用するときは下位4ビットのSPI系に迷惑をかけないようにする。
 Dim FTDI_GPIOA As Byte
 Const FTDI_GPIOA_DDR = &HFB
-Const NUS_WE=&H10
-Const NUS_RE=&H20
-Const ALE_L =&H40
-Const ALE_H =&H80
+Const NUS_WE = &H10
+Const NUS_RE = &H20
+Const ALE_L = &H40
+Const ALE_H = &H80
 
 'MCP23S17-GPIOB
-Const EEP_CLK=&H01
-Const EEP_DAT=&H02	'SDAT
+Const EEP_CLK = &H01
+Const EEP_DAT = &H02	'SDAT
 Const RESET = &H04
-Const NUS_POWER=&H08
-Const SDAT_DDR_IN = &H02	'1=input
-Const SDAT_DDR_OUT= &H00
+Const NUS_POWER = &H08
+Const SDAT_DDR_IN = &H02	'1 = input
+Const SDAT_DDR_OUT = &H00
 
 Sub N64PowerON()
-	MCP_WriteRegister(MCP23017_GPIOB,EEP_CLK)
+	MCP_WriteRegister(MCP23017_GPIOB, EEP_CLK)
 	FTDI_SendCommand()
-	MCP_WriteRegister(MCP23017_GPIOB,RESET or EEP_CLK)
+	MCP_WriteRegister(MCP23017_GPIOB, RESET or EEP_CLK)
 	FTDI_SendCommand()
 	Sleep(5)
 End Sub
 
 Sub N64PowerOFF()
-	MCP_WriteRegister(MCP23017_GPIOB,NUS_POWER or EEP_CLK)
+	MCP_WriteRegister(MCP23017_GPIOB, NUS_POWER or EEP_CLK)
 	FTDI_SendCommand()
 	Sleep(3)
 End Sub
 
 Sub NUS_Reset()
-	MCP_WriteRegister(MCP23017_GPIOB,EEP_CLK)
+	MCP_WriteRegister(MCP23017_GPIOB, EEP_CLK)
 	FTDI_SendCommand()
-	MCP_WriteRegister(MCP23017_GPIOB,RESET or EEP_CLK)
+	MCP_WriteRegister(MCP23017_GPIOB, RESET or EEP_CLK)
 	FTDI_SendCommand()
 End Sub
 /*
 Sub NUS_Clock()
-	MCP_WriteRegister(MCP23017_GPIOB,0)
-	MCP_WriteRegister(MCP23017_GPIOB,EEP_CLK)
+	MCP_WriteRegister(MCP23017_GPIOB, 0)
+	MCP_WriteRegister(MCP23017_GPIOB, EEP_CLK)
 End Sub*/
 
 'WE RE ALE_H ALE_Lの制御
 Sub NUS_SetCtrlPin(newFT_GPIOA As Byte)
-	if FTDI_GPIOA And NUS_WE =0 Then debug
+	if FTDI_GPIOA And NUS_WE = 0 then debug
 	'Set N64 control pin
-	FTDI_GPIOA=(FTDI_GPIOA And &H0F) or (newFT_GPIOA And &HF0)
-	outbuf[c]=&H80				:	c++
-	outbuf[c]=FTDI_GPIOA		:	c++
-	outbuf[c]=FTDI_GPIOA_DDR	:	c++		'(Out:1 , input:0)
+	FTDI_GPIOA = (FTDI_GPIOA And &H0F) or (newFT_GPIOA And &HF0)
+	outbuf[c] = &H80				:	c++
+	outbuf[c] = FTDI_GPIOA		:	c++
+	outbuf[c] = FTDI_GPIOA_DDR	:	c++		'(Out:1 , input:0)
 End Sub
 
 Sub NUS_readRequest(nLoop As DWord)
 	Dim i As Long
-	For i =1 To nLoop
+	For i = 1 To nLoop
 		NUS_SetCtrlPin(NUS_WE)				'RE -> Low
-		if slowMode=TRUE Then FT_WAIT(15)
+		if slowMode = TRUE then FT_WAIT(15)
 
 		MCP_ReadRegister(MCP23017_GPIOA)	'Hibyte Request
-		outbuf[c]=&H83	:	c++				'LoByte Request
+		outbuf[c] = &H83	:	c++				'LoByte Request
 		NUS_SetCtrlPin(NUS_WE or NUS_RE)	'RE -> Hi
 
 	Next i
 End Sub
 
 Enum NUS_BUS_DIRECTION
-	NUS_BUS_DIR_INPUT  = &HFF
+	NUS_BUS_DIR_INPUT = &HFF
 	NUS_BUS_DIR_OUTPUT = &H00
 End Enum
 
 Sub NUS_SetBusDir(dir As NUS_BUS_DIRECTION)
 	'ACBusの方向設定(1でOutput)
-	if dir=NUS_BUS_DIR_INPUT Then
-		outbuf[c]=&H82				:	c++
-		outbuf[c]=00				:	c++
-		outbuf[c]=NOT(dir) And &HFF	:	c++
-	Endif
+	if dir = NUS_BUS_DIR_INPUT then
+		outbuf[c] = &H82				:	c++
+		outbuf[c] = 00				:	c++
+		outbuf[c] = NOT(dir) And &HFF	:	c++
+	endif
 	'MCP-GPIOAの方向設定(1でInput)
-	MCP_WriteRegister(MCP23017_IODIRA,dir )
+	MCP_WriteRegister(MCP23017_IODIRA, dir As Byte )
 End Sub
 
 
 Sub NUS_SetAddress(adr As DWord)
-	Dim adrHi As Word,adrLo As Word
-	adrHi=adr>>16
-	adrLo=adr And &H0000FFFF
+	Dim adrHi As Word, adrLo As Word
+	adrHi = adr>>16
+	adrLo = adr And &H0000FFFF
 
 	NUS_SetBusDir(NUS_BUS_DIR_OUTPUT)
 
 
 	'WE RE ALE_HL -> High[
-	if slowMode=TRUE Then
+	if slowMode = TRUE then
 		NUS_SetCtrlPin(&H30)	'ALE_Lは遅らせないと一部カートリッジでアドレスセットに失敗する
 		FT_WAIT(9)
 		NUS_SetCtrlPin(&Hb0)	'ALE_Lは遅らせないと一部カートリッジでアドレスセットに失敗する
 '	FT_WAIT(5)
-	Endif
+	endif
 	NUS_SetCtrlPin(&Hf0)
 
-'	if slowMode=TRUE Then FT_WAIT(20)
-	
-	'Set N64HiByte
-	MCP_WriteRegister(MCP23017_GPIOA,adrHi>>8)
-	outbuf[c]=&H82				:	c++
-	outbuf[c]=adrHi And &H00FF	:	c++
-	outbuf[c]=&HFF				:	c++	'ALL OUTPUT
+'	if slowMode = TRUE then FT_WAIT(20)
 
-	'if slowMode=TRUE Then FT_WAIT(20)
+	'Set N64HiByte
+	MCP_WriteRegister(MCP23017_GPIOA, adrHi>>8)
+	outbuf[c] = &H82				:	c++
+	outbuf[c] = adrHi And &H00FF	:	c++
+	outbuf[c] = &HFF				:	c++	'ALL OUTPUT
+
+	'if slowMode = TRUE then FT_WAIT(20)
 
 	'ALE_H -> Low
 	NUS_SetCtrlPin(NUS_WE or NUS_RE or ALE_L)
 
 	'Set N64 Low Byte
-	MCP_WriteRegister(MCP23017_GPIOA,adrLo>>8)
-	outbuf[c]=&H82				:	c++
-	outbuf[c]=adrLo And &H00FF	:	c++
-	outbuf[c]=&HFF				:	c++	'ALL OUTPUT
+	MCP_WriteRegister(MCP23017_GPIOA, adrLo>>8)
+	outbuf[c] = &H82				:	c++
+	outbuf[c] = adrLo And &H00FF	:	c++
+	outbuf[c] = &HFF				:	c++	'ALL OUTPUT
 
-'	if slowMode=TRUE Then FT_WAIT(15)
+'	if slowMode = TRUE then FT_WAIT(15)
 
 	'ALE_L -> Low
 	NUS_SetCtrlPin(NUS_WE or NUS_RE)
 
-'	if slowMode=TRUE Then FT_WAIT(1500)
+'	if slowMode = TRUE then FT_WAIT(1500)
 
 
 	NUS_SetBusDir(NUS_BUS_DIR_INPUT)
 
-'	printf(ex"[SetAddress] %08x\n",adr)
+'	printf(ex"[SetAddress] %08x\n", adr)
 End Sub
 
-Sub NUS_writeData(outData AS Word)
-	NUS_SetBusDir(NUS_BUS_DIR_OUTPUT)		
+Sub NUS_writeData(outData As Word)
+	NUS_SetBusDir(NUS_BUS_DIR_OUTPUT)
 
-	MCP_WriteRegister(MCP23017_GPIOA,outData>>8)
-	outbuf[c]=&H82				:	c++
-	outbuf[c]=outData And &H00FF	:	c++
-	outbuf[c]=&HFF				:	c++	'ALL OUTPUT
+	MCP_WriteRegister(MCP23017_GPIOA, outData>>8)
+	outbuf[c] = &H82				:	c++
+	outbuf[c] = outData And &H00FF	:	c++
+	outbuf[c] = &HFF				:	c++	'ALL OUTPUT
 
 	FT_WAIT(1)
 	NUS_SetCtrlPin(NUS_RE)

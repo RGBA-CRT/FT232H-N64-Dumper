@@ -1,10 +1,10 @@
-'Todo 
+'Todo
 '- SE
 '- CRCをチェック、カートリッジ接触チェック
 '- 　このチェックが通ったらSaveタイプ判定
 '- ダンプ終わったらDat-OMaticのCRCと比較
 
-/* FT232H,MCP23S17を用いたN64吸出しプログラム [for ActiveBasic v4]
+/* FT232H, MCP23S17を用いたN64吸出しプログラム [for ActiveBasic v4]
  * RGBA_CRT 2016-2017 [rgba3crt1p@gmail.com]
  * <<< 実験コード・未リファクタリング >>>>
  *
@@ -13,11 +13,11 @@
  * 	https://github.com/sanni/cartreader/
  * 	FTDI Documents
  * 	http://www.hdl.co.jp/USB/mpsse_spi/
- * 	
+ *
  * connection:：
  * 	ADBus-SPI <-> MCP23S17
- * 	ADBus4~7  <-> N64 /WE /RE ALE_L ALE_H
- * 	ACBus0~7  <-> N64 LoByte
+ * 	ADBus4~7 <-> N64 /WE /RE ALE_L ALE_H
+ * 	ACBus0~7 <-> N64 LoByte
  * 	MCP23S17-GPIOA <-> N64 HiByte
  * 	MCP23S17-GPIOB <-> N64 EEP_CLK /RESET S_DAT
  */
@@ -31,21 +31,21 @@ todo: verify, error check, refactor, check blank before write, unlock only comma
 #include "D2XX.sbp"
 #include <RGBALib.sbp>
 
-Const IO_BUFFERSIZE=1024*32
-Const USB_BUFFER_SIZE=1024*6
-Const FT_USB_LATENCY=1 ' 1～254
+Const IO_BUFFERSIZE = 1024*32
+Const USB_BUFFER_SIZE = 1024*6
+Const FT_USB_LATENCY = 1 ' 1～254
 
-Const CART_BASEADR_SRAM=&H08000000
-Const CART_BASEADR_ROM =&H10000000
+Const CART_BASEADR_SRAM = &H08000000
+Const CART_BASEADR_ROM = &H10000000
 
-Const NUS_DUMP_BUFFER_SIZE=&H200	'512バイトずつアドレス指定が必要なのでこれが最大
+Const NUS_DUMP_BUFFER_SIZE = &H200	'512バイトずつアドレス指定が必要なのでこれが最大
 
 'http://www.zophar.net/fileuploads/2/10655uytsm/N64ops03.txt
-Const NUS_ROM_HEADER_SIZE=&H40
-Const NUS_TITLE_LEN=20
+Const NUS_ROM_HEADER_SIZE = &H40
+Const NUS_TITLE_LEN = 20
 Type NUS_ROM_HEADER_RAW
 	Initial_Reg As Word
-	isCompress As Byte	'12h=uncomplessed 13=complessed
+	isCompress As Byte	'12h = uncomplessed 13 = complessed
 	uk1[4] As Byte
 	EntryPoint As DWord
 	uk2 As DWord
@@ -61,12 +61,12 @@ End Type
 ' 色々正規化されたヘッダ
 ' ActiveBasicにunionが無いのが悲しい
 Type NUS_ROM_HEADER
-	Raw AS NUS_ROM_HEADER_RAW
-	Title[NUS_TITLE_LEN] AS Byte
+	Raw As NUS_ROM_HEADER_RAW
+	Title[NUS_TITLE_LEN] As Byte
 	GameID_str[4] As Byte
-	CicType AS Long
-	RomSize AS DWord
-	RomSizeReason AS BytePtr
+	CicType As Long
+	RomSize As DWord
+	RomSizeReason As BytePtr
 End Type
 
 
@@ -77,8 +77,8 @@ End Type
 Dim dwAB As DWord
 Dim hFT As FT_HANDLE
 Dim DevIdx As Long
-Dim outbuf[IO_BUFFERSIZE] As Byte,c As DWord
-Dim slowMode AS BOOL
+Dim outbuf[IO_BUFFERSIZE] As Byte, c As DWord
+Dim slowMode As BOOL
 
 Main()
 End
@@ -92,37 +92,37 @@ Sub Main()
 
 	DevIdx = ListUpFTDI_Devices()
 	print DevIdx
-	if DevIdx<1 then 
+	if DevIdx<1 then
 		end
-	elseif DevIdx=1 Then
-		DevIdx=0
-	Else
-		Input "slect device [num] > ",DevIdx
+	else if DevIdx = 1 then
+		DevIdx = 0
+	else
+		Input "slect device [num] > ", DevIdx
 	endif
 
 
 	'device open
-	FT_Open(DevIdx,hFT)
-	if hFT=0 Then
+	FT_Open(DevIdx, hFT)
+	if hFT = 0 then
 		Print "Could not open Device."
 		Sleep(3000)
 		End
-	Else
+	else
 		Print ex"Open OK\n"
-	Endif
+	endif
 
-	if SetupFTDI_Device(hFT)<>TRUE Then Print "setup err"
+	if SetupFTDI_Device(hFT) <> TRUE then Print "setup err"
 
 	InitSPI()
 	NUS_InitPorts()
 	FTDI_SendCommand()
 
-	Dim biosPath AS String
-	Dim op AS DWord,header AS NUS_ROM_HEADER
-	Dim adrStr AS String, adr as DWord
-	Dim FileName[NUS_TITLE_LEN+16] As Byte, i AS Long
+	Dim biosPath As String
+	Dim op As DWord, header As NUS_ROM_HEADER
+	Dim adrStr As String, adr As DWord
+	Dim FileName[NUS_TITLE_LEN+16] As Byte, i As Long
 	Dim save_type As NUS_SAVE_TYPE
-	Dim SaveBE AS String, SaveLE As String
+	Dim SaveBE As String, SaveLE As String
 
 '	EnterSlowMode()
 '	IntelFhash_WriteFile(CART_BASEADR_ROM, "controller_pak.n64")
@@ -130,136 +130,134 @@ Sub Main()
 
 
 	*ROM_INFO
-		input "[INSERT CART AND PRESS ENTER]",DevIdx
+		input "[INSERT CART AND PRESS ENTER]", DevIdx
 
 		flush()
 		FillMemory(VarPtr(header), sizeof(NUS_ROM_HEADER), &HDD)
-		header.RomSizeReason="ERR"
+		header.RomSizeReason = "ERR"
 		GetRomInfo(VarPtr(header))
-		if header.Title[0]=ex"\xFF" Then lstrcpy(header.Title,"[CART CONNECT ERR]")
+		if header.Title[0] = ex"\xFF" then lstrcpy(header.Title, "[CART CONNECT ERR]")
 		PrintRomInfo(VarPtr(header))
 
 	*SEL_OP
 		Print ex"[SELECT OPERATION]\n\t1.DUMP FULL ROM\n\t2.INPUT ROM SIZE AND DUMP\n\t3.SRAM DUMP [TEST]\n\t4.ROM VIEWER\n\t5.EXIT"
-		input "> ",op
+		input "> ", op
 		Print
 
 		flush()
 
-		if op<>9999 Then
+		if op <> 9999 then
 			' ファイル名を生成
-			memcpy(FileName,header.Title,NUS_TITLE_LEN)
+			memcpy(FileName, header.Title, NUS_TITLE_LEN)
 
 			' ファイル名に使えない文字をエスケープ
-			/*For i=0 To NUS_TITLE_LEN
+			/*For i = 0 To NUS_TITLE_LEN
 				Dim ct As DWord
 				ct = PathGetCharType(FileName[i])
-				if ct = GCT_SEPARATOR or ct = GCT_INVALID  Then _
+				if ct = GCT_SEPARATOR or ct = GCT_INVALID then _
 					FileName[i] = GetByte("_")
 			Next i*/
-		Endif
+		endif
 
 		Select Case op
-			Case 1				
-				lstrcat(FileName,".z64")
+			Case 1
+				lstrcat(FileName, ".z64")
 
-				if DumpFullRom(FileName,header.RomSize)<>TRUE Then Print " [Error]":Goto *EXIT_PROGRAM
+				if DumpFullRom(FileName, header.RomSize) <> TRUE then Print " [Error]":Goto *EXIT_PROGRAM
 
 			Case 2
-				lstrcat(FileName,".z64")
+				lstrcat(FileName, ".z64")
 
-				Input ex"Input ROM size (ex:8MB)\n > ",adrStr
-				rcAsciiToInt(adrStr,VarPtr(adr),0,TRUE)
+				Input ex"Input ROM size (ex:8MB)\n > ", adrStr
+				rcAsciiToInt(adrStr, VarPtr(adr), 0, TRUE)
 
-				printf(ex"Size: %dMB\n",
-					adr/1024/1024,
-				)
+				printf(ex"Size: %dMB\n", adr/1024/1024 As DWord)
 
-				if DumpFullRom(FileName, adr)<>TRUE Then Print " [Error]":Goto *EXIT_PROGRAM
+				if DumpFullRom(FileName, adr) <> TRUE then Print " [Error]":Goto *EXIT_PROGRAM
 
 			Case 3
-				N64PowerON()	
+				N64PowerON()
 				FTDI_SendCommand()
 
-				save_type=SloveSaveType()
-				printf(ex"SaveType: %s\n",GetSaveTypeLabel(save_type))
+				save_type = SloveSaveType()
+				printf(ex"SaveType: %s\n", GetSaveTypeLabel(save_type))
 
-				if save_type = NUS_SAVE_UNKNOWN or save_type = NUS_SAVE_NONE Then
+				if save_type = NUS_SAVE_UNKNOWN or save_type = NUS_SAVE_NONE then
 					printf(ex"dump save abort.\n")
-				Else
+				else
 					Dim ltsave_ext As BytePtr
-					if save_type=NUS_SAVE_SRAM then
-						adr = 32*1024  As DWord
+					if save_type = NUS_SAVE_SRAM then
+						adr = 32*1024 As DWord
 						ltsave_ext = ".sra"
-					Elseif save_type=NUS_SAVE_SRAMx3 then
-						adr = 32*1024*3  As DWord
+					else if save_type = NUS_SAVE_SRAMx3 then
+						adr = 32*1024*3 As DWord
 						ltsave_ext = ".sra"
-					Else if save_type=NUS_SAVE_FLASH_BYTE or save_type=NUS_SAVE_FLASH_WORD then
+					else if save_type = NUS_SAVE_FLASH_BYTE or save_type = NUS_SAVE_FLASH_WORD then
 						adr = 128*1024 As DWord
 						ltsave_ext = ".fla"
 						SaveFlash_CmdReadEnable()
-					Else 
+					else
 						debug
 						adr = 128*1024 As DWord
-					End If
+					endif
 
-					printf(ex"Size = %dKB : %d bytes : 0x%X : %dKbits\n\n",
-						adr/1024,
-						adr,
-						adr,
+					printf(ex"Size = %dKB : %d bytes : 0x%X : %dKbits\n\n", 
+						adr/1024, 
+						adr, 
+						adr, 
 						adr*8/1024
 					)
 
 					SaveBE = FileName+MakeStr(".sav")
 					SaveLE = FileName+MakeStr(ltsave_ext)
-					'DumpFullRom(SaveBE,adr,CART_BASEADR_SRAM)
+					'DumpFullRom(SaveBE, adr, CART_BASEADR_SRAM)
 					DumpSramFile(SaveBE, adr, save_type, CART_BASEADR_SRAM)
 					printf(ex"Saved sram dump for Ares to \q%s\q\n", SaveBE)
-					
-					ConvertLittleEndian(SaveBE,SaveLE)
+
+					ConvertLittleEndian(SaveBE, SaveLE)
 					printf(ex"Saved sram dump for PJ64 to \q%s\q\n", SaveLE)
 
 					N64PowerOFF()
-				End If
+				endif
 			Case 24
-				lstrcat(FileName,"_debug.sra")
+				lstrcat(FileName, "_debug.sra")
 
-				'Input ex"Input sram size (ex:32KB)\n > ",adrStr
-				adrStr="128KB"
-				rcAsciiToInt(adrStr,VarPtr(adr),0,TRUE)
+				'Input ex"Input sram size (ex:32KB)\n > ", adrStr
+				adrStr = "128KB"
+				rcAsciiToInt(adrStr, VarPtr(adr), 0, TRUE)
 
-				printf(ex"Size = %dKB : %d bytes : 0x%X\n",
-					adr/1024,
-					adr,
+				printf(ex"Size = %dKB : %d bytes : 0x%X\n", 
+					adr/1024, 
+					adr, 
 					adr
 				)
 
 				'問答無用でFlashRamを有効にする。レジスタの位置にかぶる大きさのSRAMがないので大丈夫のはず
 				SaveFlash_CmdReadEnable()
-				DumpFullRom("temp-sram.raw",adr,CART_BASEADR_SRAM)
+				DumpFullRom("temp-sram.raw", adr, CART_BASEADR_SRAM)
 
-				ConvertLittleEndian("temp-sram.raw",FileName)
+				ConvertLittleEndian("temp-sram.raw", FileName)
 
 				printf(ex"Saved sram dump to \q%s\q", FileName)
 
 			Case 4
 				Do
 					testDump(adr)
-					Input ex"[ENTER:Continue][1:InputAdr][2:Reload][3:Exit]\n> ",op
+					Input ex"[ENTER:Continue][1:InputAdr][2:Reload][3:Exit]\n> ", op
 
-					if op=0 Then 
-						adr += 128
+					if op = 0 then
+						adr + = 128
 
-					Elseif op=1 Then 
+					else if op = 1 then
 						Input ex"Address : ", adrStr
-						rcAsciiToInt(adrStr,VarPtr(adr),0,TRUE)
+						rcAsciiToInt(adrStr, VarPtr(adr), 0, TRUE)
 
-					Elseif op=2 Then 
+					else if op = 2 then
 
-					Else
+					else
 						ExitDo
 
-					Endif
+					endif
 				Loop
 			Case 5
 				Goto *EXIT_PROGRAM
@@ -269,36 +267,36 @@ Sub Main()
 
 			Case 7
 				ReadCFI()
-				
+
 			Case 8
 				GS_Dump()
 
 			Case 9
 				op = 			GS_GetFlashId()
-				printf(ex"ID = %08X\n",op)
-				if op = GS_FLASH_ID Then
+				printf(ex"ID = %08X\n", op)
+				if op = GS_FLASH_ID then
 					printf(ex"id match.\n")
-				Else
+				else
 					printf(ex"id unmatch.\n")
-				End If
+				endif
 
 			Case 10
 				Input ex"EraseFlash(1/0)\n", op
-				if op=1 Then
+				if op = 1 then
 					GS_EraseFlash()
 					printf(ex"erased!\n")
-				End If
+				endif
 
 			Case 11
 				input "bios path> ", biosPath
 				GS_WriteFromFile(StrPtr(biosPath))
 				'GS_WriteFromFile("doc\GS\GS3.3.z64")
-				
+
 			Case 12
 				EnterSlowMode()
 				IntelFhash_Erase(CART_BASEADR_ROM + 0)
 				IntelFhash_Erase(CART_BASEADR_ROM + &H2000000)
-			
+
 			Case 13
 				EnterSlowMode()
 				N64PowerON()
@@ -306,7 +304,7 @@ Sub Main()
 				IntelFhash_ChipErase(CART_BASEADR_ROM + &H2000000)
 				N64PowerOFF()
 
-			Case 14 
+			Case 14
 				EnterSlowMode()
 				N64PowerON()
 				IntelFhash_Reset(CART_BASEADR_ROM)
@@ -352,13 +350,13 @@ Sub Main()
 
 			Case 42
 				N64PowerON()
-				save_type=SloveSaveType()
-				printf(ex"SaveType: %s\n",GetSaveTypeLabel(save_type))
-				
+				save_type = SloveSaveType()
+				printf(ex"SaveType: %s\n", GetSaveTypeLabel(save_type))
+
 				N64PowerOFF()
 
 			Case 43
-				ConvertLittleEndian("A","B")
+				ConvertLittleEndian("A", "B")
 			Case 61
 				EnterSlowMode()
 				N64PowerON()
@@ -367,7 +365,7 @@ Sub Main()
 
 			Case 62
 				Input ex"romspeed> : ", op
-				Print "romspeed: ",op
+				Print "romspeed: ", op
 				SetRomSpeed(op)
 
 
@@ -391,7 +389,7 @@ Sub Main()
 	N64PowerOFF()
 	FT_Close(hFT)
 	Print "END"
-EndSub
+End Sub
 
 Sub NotifySound()
 	MessageBeep(-1)
@@ -399,87 +397,87 @@ End Sub
 
 Sub EnterSlowMode()
 	Print "Slow Mode Eneble"
-	memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x03\x00",7)  :	c+=7	'SlowSpeed For FlashCart
-	slowMode=TRUE
+	memcpy(outbuf+c, ex"\x85\x97\x8c\x8A\x86\x03\x00", 7) :	c+ = 7	'SlowSpeed For FlashCart
+	slowMode = TRUE
 End Sub
 
 
 Sub SetRomSpeed(speed As Word)
 	Print "Slow Mode Eneble"
-	memcpy(outbuf+c,ex"\x85\x97\x8c\x8A\x86\x00\x00",7)  :	c+=7	'OverSpeed
-	'slowMode=TRUE
+	memcpy(outbuf+c, ex"\x85\x97\x8c\x8A\x86\x00\x00", 7) :	c+ = 7	'OverSpeed
+	'slowMode = TRUE
 	outbuf[c-1] = speed>>8
 	outbuf[c-2] = speed And &HFF
-	Dump(outbuf+c-7,7)
+	Dump(outbuf+c-7, 7)
 End Sub
 
 Sub flush()
-	Dim ftStatus As Long,bufsize As DWord,buf As BytePtr,dwAB As DWord
-	
+	Dim ftStatus As Long, bufsize As DWord, buf As BytePtr, dwAB As DWord
+
 	ftStatus = ftStatus or FT_GetQueueStatus(hFT, bufsize)		 ' Get the number of bytes in the FT2232H receive buffer
-	buf=calloc(bufsize)
+	buf = calloc(bufsize)
 	if bufsize>0 then Print bufsize
 
-	if (ftStatus = FT_OK) And  (bufsize > 0) Then _
-		FT_Read(hFT, buf, bufsize, dwAB)  'Read out the data from FT2232H receive buffer
+	if (ftStatus = FT_OK) And (bufsize > 0) then _
+		FT_Read(hFT, buf, bufsize, dwAB) 'Read out the data from FT2232H receive buffer
 	free(buf)
 End Sub
 
-Function DumpFullRom(fileName As BytePtr,RomSize As DWord)(BaseAddress As DWord) As Long
-	Dim out As File ,inbuf As BytePtr,inSize As DWord
-	Dim reqAdr=&H0 As DWord
+Function DumpFullRom(fileName As BytePtr, RomSize As DWord)(BaseAddress As DWord) As Long
+	Dim out As File , inbuf As BytePtr, inSize As DWord
+	Dim reqAdr = &H0 As DWord
 
-	if BaseAddress=0 Then 
-		BaseAddress=CART_BASEADR_ROM
-	Else if BaseAddress=&HFFFFFFFF Then 
-		BaseAddress=&H00000000
-	Endif
+	if BaseAddress = 0 then
+		BaseAddress = CART_BASEADR_ROM
+	else if BaseAddress = &HFFFFFFFF then
+		BaseAddress = &H00000000
+	endif
 
-	inbuf=calloc(NUS_DUMP_BUFFER_SIZE)
-	if out.openFile(fileName,GENERIC_WRITE) = FALSE Then
+	inbuf = calloc(NUS_DUMP_BUFFER_SIZE)
+	if out.openFile(fileName, GENERIC_WRITE) = FALSE then
 		Print "Failed to create file."
 		ExitFunction
-	End If
+	endif
 
 	flush()
 
 	N64PowerON()
 
 	NUS_SetAddress(BaseAddress)
-	if FTDI_SendCommand()<>FT_OK Then Goto *DFR_EXIT
+	if FTDI_SendCommand() <> FT_OK then Goto *DFR_EXIT
 
 	Print "dumping data..."
-	Dim time As DWord,lt As DWord, retry As DWord
-	time=GetTickCount()
+	Dim time As DWord, lt As DWord, retry As DWord
+	time = GetTickCount()
 	Do
 		' Byte Address
 		NUS_SetAddress(BaseAddress + reqAdr)
 		NUS_readRequest(NUS_DUMP_BUFFER_SIZE/2)
 
-		if FTDI_SendCommand()<>FT_OK Then Goto *DFR_EXIT
-		if FT_Read(hFT,inbuf,NUS_DUMP_BUFFER_SIZE,inSize)<>FT_OK Then Goto *DFR_EXIT
-		if inSize <> NUS_DUMP_BUFFER_SIZE Then
+		if FTDI_SendCommand() <> FT_OK then Goto *DFR_EXIT
+		if FT_Read(hFT, inbuf, NUS_DUMP_BUFFER_SIZE, inSize) <> FT_OK then Goto *DFR_EXIT
+		if inSize <> NUS_DUMP_BUFFER_SIZE then
 			printf(ex"receive size error.\n")
 			retry++
 			if retry>5 then Goto *DFR_EXIT
 			Continue
-		End If
+		endif
 
-		out.write(inbuf,inSize)
-		reqAdr+=inSize
+		out.write(inbuf, inSize)
+		reqAdr+ = inSize
 
-		if reqAdr Mod (&H5000*2) = 0 Then 
+		if reqAdr Mod (&H5000*2) = 0 then
 			ConsoleReturnLine()
-			printf(ex"Address=%08X ... %d%%  [%d KB/s]          ",reqAdr,(reqAdr/RomSize)*100,reqAdr/(GetTickCount()-time))
-			if GetKeyState(VK_ESCAPE) And &H80 Then Print ex"\n[ESC]Cancelled by user.":Goto *DFR_EXIT
-		End If
-	'	if reqAdr Mod &H100000 = 0 Then Sleep(200)
+			printf(ex"Address = %08X ... %d%% [%d KB/s] ", reqAdr, (reqAdr/RomSize)*100, reqAdr/(GetTickCount()-time))
+			if GetKeyState(VK_ESCAPE) And &H80 then Print ex"\n[ESC]Cancelled by user.":Goto *DFR_EXIT
+		endif
+	'	if reqAdr Mod &H100000 = 0 then Sleep(200)
 
-		if reqAdr=>RomSize Then ExitDo
+		if reqAdr >= RomSize then ExitDo
 	Loop
-	lt=GetTickCount()-time
-	printf(ex"\nDump Successfull !\nTime:%dms = %ds = %dmin\n",lt,lt/1000,lt/1000/60)
-	DumpFullRom=TRUE
+	lt = GetTickCount()-time
+	printf(ex"\nDump Successfull !\nTime:%dms = %ds = %dmin\n", lt, lt/1000, lt/1000/60)
+	DumpFullRom = TRUE
 
 *DFR_EXIT
 	free(inbuf)
@@ -490,54 +488,54 @@ Function DumpFullRom(fileName As BytePtr,RomSize As DWord)(BaseAddress As DWord)
 End Function
 
 '大体のエミュのセーブデータの形式がリトルエンディアン（DWord)
-Function ConvertLittleEndian(fname As BytePtr,outname AS BytePtr) As Long
-	Dim out As File,in As File,buf As *DWord,size As DWord,i As DWord
-	in.openFile(fname,GENERIC_READ)
-	size=in.length()
-	buf=calloc(size+12)
-	in.read(buf,size)
+Function ConvertLittleEndian(fname As BytePtr, outname As BytePtr) As Long
+	Dim out As File, in As File, buf As *DWord, size As DWord, i As DWord
+	in.openFile(fname, GENERIC_READ)
+	size = in.length()
+	buf = calloc(size+12)
+	in.read(buf, size)
 	in.close()
-	For i=0 To size/4-1
+	For i = 0 To size/4-1
 		ChangeEndianDW(buf[i])
-	Next i 
-	out.openFile(outname,GENERIC_WRITE)
-	out.write(buf,size)
+	Next i
+	out.openFile(outname, GENERIC_WRITE)
+	out.write(buf, size)
 	out.close()
 	free(buf)
 End Function
 
-Sub GetRawHeader(header AS *NUS_ROM_HEADER_RAW)
+Sub GetRawHeader(header As *NUS_ROM_HEADER_RAW)
 	Dim inbuf[NUS_ROM_HEADER_SIZE] As Byte
 
 	NUS_SetAddress(CART_BASEADR_ROM)
 	NUS_readRequest(NUS_ROM_HEADER_SIZE/2)
-	if FTDI_SendCommand()<>FT_OK Then Print "Connection err.":Goto *PRI_EXIT
+	if FTDI_SendCommand() <> FT_OK then Print "Connection err.":Goto *PRI_EXIT
 
-	if FT_Read(hFT,inbuf,NUS_ROM_HEADER_SIZE,dwAB)<>FT_OK Then Goto *PRI_EXIT
+	if FT_Read(hFT, inbuf, NUS_ROM_HEADER_SIZE, dwAB) <> FT_OK then Goto *PRI_EXIT
 
 	memcpy(header, inbuf, sizeof(NUS_ROM_HEADER))
-	
+
 *PRI_EXIT
 End Sub
 
-Sub GetRomInfo(header AS *NUS_ROM_HEADER)
+Sub GetRomInfo(header As *NUS_ROM_HEADER)
 
 	N64PowerON()
 
 	'RAW header
 	GetRawHeader(VarPtr(header->Raw))
-	
+
 	' Title
 	memcpy(header->Title, header->Raw.Title, NUS_TITLE_LEN)
-	header->Title[NUS_TITLE_LEN]=0
+	header->Title[NUS_TITLE_LEN] = 0
 
 	Dim i As Long
-	For i=NUS_TITLE_LEN To 0 Step -1
+	For i = NUS_TITLE_LEN To 0 Step -1
 		'スペース埋めを解除
-		if header->Title[i] > &H20 Then	
+		if header->Title[i] > &H20 then
 			exitfor
-		Endif
-		header->Title[i]=0
+		endif
+		header->Title[i] = 0
 	Next i
 
 	'CIC
@@ -554,32 +552,32 @@ Sub GetRomInfo(header AS *NUS_ROM_HEADER)
 
 End Sub
 
-Sub PrintRomInfo(header AS *NUS_ROM_HEADER)
-	Dim isCompress AS BytePtr
+Sub PrintRomInfo(header As *NUS_ROM_HEADER)
+	Dim isCompress As BytePtr
 
-	if header->Raw.isCompress=&H13 Then 
+	if header->Raw.isCompress = &H13 then
 		isCompress = "Yes"
-	Else
+	else
 		isCompress = "No"
-	Endif
+	endif
 
 	ChangeEndianDW(header->Raw.CRC1)
 	ChangeEndianDW(header->Raw.CRC2)
 	ChangeEndianDW(header->Raw.EntryPoint)
 
-	printf(ex"N64 ROM Infomation\n\tTitle    : %s \n\tGameID   : NUS-%s \n\tVersion  : 1.%d\n\tCIC Type : %s\n\tCRC1     : 0x%08X\n\tCRC2     : 0x%08X\n\tEntryPtr : 0x%08X\n\tCompress : %s\n",
-		header->Title,
-		header->GameID_str,
-		header->Raw.Version,
-		CicLabelTable[header->CicType],
-		header->Raw.CRC1,header->Raw.CRC2,
-		header->Raw.EntryPoint,
-		isCompress	
+	printf(ex"N64 ROM Infomation\n\tTitle : %s \n\tGameID : NUS-%s \n\tVersion : 1.%d\n\tCIC Type : %s\n\tCRC1 : 0x%08X\n\tCRC2 : 0x%08X\n\tEntryPtr : 0x%08X\n\tCompress : %s\n", 
+		header->Title, 
+		header->GameID_str, 
+		header->Raw.Version, 
+		CicLabelTable[header->CicType], 
+		header->Raw.CRC1, header->Raw.CRC2, 
+		header->Raw.EntryPoint, 
+		isCompress
 	)
 
-	printf(ex"\tROM Size : %d MB (%dMbit) [推定] ::: %s \n\n",
-		header->RomSize/(1024*1024),
-		header->RomSize/(1024*1024/8),
+	printf(ex"\tROM Size : %d MB (%dMbit) [推定] ::: %s \n\n", 
+		header->RomSize/(1024*1024), 
+		header->RomSize/(1024*1024/8), 
 		header->RomSizeReason
 	)
 
@@ -590,63 +588,63 @@ Const NUS_SLOVE_SAMPLE_SIZE2 = &H10
 Const NUS_SLOVE_FF_FILL_HASH = &H652D544C ' SampleSize変わるたびに更新必要
 Const NUS_SLOVE_00_FILL_HASH = &HC2A8FA9D ' SampleSize変わるたびに更新必要
 
-Function NUS_ReadDataSingle(buffer As BytePtr,address AS DWord, size AS DWord) As BOOL
+Function NUS_ReadDataSingle(buffer As BytePtr, address As DWord, size As DWord) As BOOL
 	if size>NUS_DUMP_BUFFER_SIZE then exitfunction
-	
-	NUS_SetAddress(address)
-	NUS_readRequest(size/2)
-	if FTDI_SendCommand()<>FT_OK Then ExitFunction
-	if FT_Read(hFT,buffer,size,dwAB)<>FT_OK Then ExitFunction
 
-	NUS_ReadDataSingle=TRUE
+	NUS_SetAddress(address)
+	NUS_readRequest(size>>1)
+	if FTDI_SendCommand() <> FT_OK then ExitFunction
+	if FT_Read(hFT, buffer, size, dwAB) <> FT_OK then ExitFunction
+
+	NUS_ReadDataSingle = TRUE
 End Function
 
-Function NUS_ReadData(buffer As BytePtr,address AS DWord, size AS DWord)(blockSize As DWord) As BOOL
+Function NUS_ReadData(buffer As BytePtr, address As DWord, size As DWord)(blockSize As DWord) As BOOL
 	if blockSize = 0 then
-		blockSize=NUS_DUMP_BUFFER_SIZE
-	End If
+		blockSize = NUS_DUMP_BUFFER_SIZE
+	endif
 
-	Dim i AS DWord, offset =0 As DWord,readSize AS DWord, loop_num As DWord
-	loop_num = size/blockSize
-	if size Mod blockSize then loop_num+=1
-	'printf(ex"READ DATA adr=%p sizse=%p blockSizse=%p loopn=%d\n",address,size,blockSize,loop_num)
+	Dim i As DWord, offset = 0 As DWord, readSize As DWord, loop_num As DWord
+	loop_num = (size/blockSize) As DWord
+	if size Mod blockSize then loop_num+ = 1
+	'printf(ex"READ DATA adr = %p sizse = %p blockSizse = %p loopn = %d\n", address, size, blockSize, loop_num)
 	For i = 0 To loop_num-1
 		offset = i*blockSize
-		if i<>loop_num then
+		if i <> loop_num then
 			readSize = blockSize
-		Else
+		else
 			readSize = size Mod blockSize
-		End If
+		endif
 	'	printf(ex" - %d %d\n", i, readSize)
-		if NUS_ReadDataSingle(buffer + offset, address+offset, readSize) <> TRUE Then Exitfunction
+		if NUS_ReadDataSingle(buffer + offset, address+offset, readSize) <> TRUE then Exitfunction
 	Next i
 
 	NUS_ReadData = TRUE
 End Function
 
-Function NUS_GetHash(address AS DWord, size AS DWord)(blockSize As DWord) As DWord
-	Dim buf[NUS_DUMP_BUFFER_SIZE] AS Byte
-	if NUS_ReadData(buf, address, size, blockSize) <> TRUE Then ExitFunction
-'	FillMemory(buf,size,&H00)
+Function NUS_GetHash(address As DWord, size As DWord)(blockSize As DWord) As DWord
+	Dim buf[NUS_DUMP_BUFFER_SIZE] As Byte
+	if NUS_ReadData(buf, address, size, blockSize) <> TRUE then ExitFunction
+'	FillMemory(buf, size, &H00)
 	NUS_GetHash = crc32.GetHash(buf, size)
 End Function
 
 'ROMサイズを推測する
 Function SloveRomSize(reason As *BytePtr) As DWord
 	Dim i As Long
-	Dim sloveAddress AS DWord
-	Dim headerHash AS DWord, lastHash AS DWord, hash As DWord, hash2 AS DWord
+	Dim sloveAddress As DWord
+	Dim headerHash As DWord, lastHash As DWord, hash As DWord, hash2 As DWord
 	Const slovePatternCount = 8
 	Dim slovePattern[slovePatternCount] = [
-		0, 4, 8, 12, 16, 32, 40, 48, 64,
-	] AS Byte
+		0, 4, 8, 12, 16, 32, 40, 48, 64, 
+	] As Byte
 
 	N64PowerON()
 
-	For i=0 To slovePatternCount
+	For i = 0 To slovePatternCount
 		' READ
 		sloveAddress = CART_BASEADR_ROM + (slovePattern[i] * 1024*1024)
-		
+
 		'データ不定領域の判定のため、1回の転送ブロックサイズを変えた2回の読み出しをする
 		' Ref: https://twitter.com/HelicopterP64/status/1608976626125275137
 		hash = NUS_GetHash(sloveAddress, NUS_SLOVE_SAMPLE_SIZE1, NUS_SLOVE_SAMPLE_SIZE1)
@@ -656,73 +654,73 @@ Function SloveRomSize(reason As *BytePtr) As DWord
 #endif
 
 		' CHECK FF FILL
-		if hash = NUS_SLOVE_FF_FILL_HASH Then reason[0]="detect 0xFF fill":ExitFor
-		if hash = NUS_SLOVE_00_FILL_HASH Then reason[0]="detect 0x00 fill":ExitFor
-		if hash <> hash2 Then reason[0]="detect unstable area":ExitFor
+		if hash = NUS_SLOVE_FF_FILL_HASH then reason[0] = "detect 0xFF fill":ExitFor
+		if hash = NUS_SLOVE_00_FILL_HASH then reason[0] = "detect 0x00 fill":ExitFor
+		if hash <> hash2 then reason[0] = "detect unstable area":ExitFor
 
-		if i=0 Then
-			' MEMORY HEADER 
+		if i = 0 then
+			' MEMORY HEADER
 			headerHash = hash
 
-		Else
+		else
 			' COMPARE HEADER
-			if headerHash = hash Then reason[0]="detect header":ExitFor
-			if lastHash = hash Then reason[0]="detect repeat": ExitFor
+			if headerHash = hash then reason[0] = "detect header":ExitFor
+			if lastHash = hash then reason[0] = "detect repeat": ExitFor
 
-		Endif
+		endif
 
 		lastHash = hash
 	Next i
 
-'	if i Mod 4 <>0 Then i+=4-(i Mod 4)
+'	if i Mod 4 <> 0 then i+ = 4-(i Mod 4)
 	SloveRomSize = sloveAddress - CART_BASEADR_ROM
 
 *SRS_EXIT
 	N64PowerOFF()
 	'free(header)
 	'free(inbuf )
-	if reason[0]=NULL Then	reason[0]="none"
+	if reason[0] = NULL then	reason[0] = "none"
 End Function
 
 
-Function isFilled(adr As BytePtr,size As DWord,checkByte As Byte) As Long
+Function isFilled(adr As BytePtr, size As DWord, checkByte As Byte) As Long
 	Dim i As Long
-	For i=0 To size-1
-		if adr[i]<>checkByte Then ExitFunction
+	For i = 0 To size-1
+		if adr[i] <> checkByte then ExitFunction
 	Next
-	isFilled=TRUE
+	isFilled = TRUE
 End Function
-		
-Function compareBin(data1 As BytePtr,data2 As BytePtr,size As DWord) As Long
+
+Function compareBin(data1 As BytePtr, data2 As BytePtr, size As DWord) As Long
 	Dim i As Long
-	For i=0 To size-1
-		if data1[i]<>data2[i] Then ExitFunction
+	For i = 0 To size-1
+		if data1[i] <> data2[i] then ExitFunction
 	Next
-	compareBin=TRUE
+	compareBin = TRUE
 End Function
-		
+
 
 
 Sub PrintBuffer()
-	printf(ex"[output buffer : %d/%d -> %d%%]",c,IO_BUFFERSIZE,c/IO_BUFFERSIZE*100)
+	printf(ex"[output buffer : %d/%d -> %d%%]", c, IO_BUFFERSIZE, c/IO_BUFFERSIZE*100)
 End Sub
 
 
 Const TEST_DUMP_BLOCK_SIZE = &H10
-Sub testDump(Adr AS DWord)
+Sub testDump(Adr As DWord)
 	N64PowerON()
 	NUS_SetAddress(NUS_GS_HEADER_OFFSET + Adr)
 	NUS_readRequest(TEST_DUMP_BLOCK_SIZE/2)
 
-	Dim inbuf[TEST_DUMP_BLOCK_SIZE] AS Byte,inSize AS DWord
+	Dim inbuf[TEST_DUMP_BLOCK_SIZE] As Byte, inSize As DWord
 	FTDI_SendCommand()
-	FT_Read(hFT,inbuf,TEST_DUMP_BLOCK_SIZE,inSize)
+	FT_Read(hFT, inbuf, TEST_DUMP_BLOCK_SIZE, inSize)
 
-	Dump(inbuf,TEST_DUMP_BLOCK_SIZE,CART_BASEADR_ROM + Adr)
+	Dump(inbuf, TEST_DUMP_BLOCK_SIZE, CART_BASEADR_ROM + Adr)
 
 	N64PowerOFF()
 '	Sleep(1000)
-	
+
 End Sub
 
 

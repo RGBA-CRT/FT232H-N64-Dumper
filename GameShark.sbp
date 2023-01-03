@@ -6,7 +6,7 @@ Const GS_FLASH_ID = &H0808BFBF
 
 Type NUS_GS_HEADER
 	Initial_Reg As Word
-	isCompress As Byte	'12h=uncomplessed 13=complessed
+	isCompress As Byte	'12h = uncomplessed 13 = complessed
 	uk1[4] As Byte
 	EntryPoint As DWord
 	uk2 As DWord
@@ -15,11 +15,11 @@ Type NUS_GS_HEADER
 	uk3[1] As DWord
 	Title[31] As Byte
 	'<< SLOTED CART HEADER >>
-	slotedCartHeader AS NUS_ROM_HEADER
+	slotedCartHeader As NUS_ROM_HEADER
 End Type
 
-Function GS_GetHeader(gs_header AS *NUS_GS_HEADER	) AS BOOL
-	Dim inbuf[256] As Byte, inSize AS DWord
+Function GS_GetHeader(gs_header As *NUS_GS_HEADER	) As BOOL
+	Dim inbuf[256] As Byte, inSize As DWord
 
 	NUS_SetAddress(NUS_GS_HEADER_OFFSET)
 	NUS_readRequest(256/2)
@@ -31,40 +31,40 @@ End Function
 
 Const GS_BIOS_SIZE = 256*1024
 Sub GS_Dump()
-	Dim GsHeader AS NUS_GS_HEADER
+	Dim GsHeader As NUS_GS_HEADER
 	N64PowerON()
 
 	GS_GetHeader(VarPtr(GsHeader))
-	GsHeader.slotedCartHeader.Raw.uk4[0]=0
-	
-	Dim fileName[64] AS Byte
+	GsHeader.slotedCartHeader.Raw.uk4[0] = 0
+
+	Dim fileName[64] As Byte
 	memcpy(fileName, GsHeader.Title, 32)
-	fileName[32]=0
+	fileName[32] = 0
 
 	printf(ex"GS-FIRMWARE: %s\nENTRY-POINT: 0x%08X\nSLOTED-GAME: %s\n", _
 		fileName, _
-		ChangeEndianDW2(GsHeader.EntryPoint), _ 
+		ChangeEndianDW2(GsHeader.EntryPoint), _
 		GsHeader.slotedCartHeader.Title _
 	)
 
-	
-	Dim i AS Long
-	For i=0 To 31
-		if fileName[i] = GetByte(":") Then fileName[i]=GetByte("_")
+
+	Dim i As Long
+	For i = 0 To 31
+		if fileName[i] = GetByte(":") then fileName[i] = GetByte("_")
 	Next i
 	lstrcat(fileName, ".bin")
 '	lstrcpy(fileName, "gs-bios.bin")
-	Dim out AS File
+	Dim out As File
 	out.openFile(fileName, GENERIC_WRITE)
-	
+
 	printf(ex"Dumping")
-	Dim buffer[512] AS Byte, inBuf AS DWord, inSize AS DWord
-	For i=0 To (GS_BIOS_SIZE/NUS_DUMP_BUFFER_SIZE)-1
+	Dim buffer[512] As Byte, inBuf As DWord, inSize As DWord
+	For i = 0 To (GS_BIOS_SIZE/NUS_DUMP_BUFFER_SIZE)-1
 		NUS_SetAddress(NUS_GS_BIOS_OFFSET + i*NUS_DUMP_BUFFER_SIZE)
 		NUS_readRequest(NUS_DUMP_BUFFER_SIZE/2)
 
 		FTDI_SendCommand()
-		FT_Read(hFT,buffer,NUS_DUMP_BUFFER_SIZE,inSize)
+		FT_Read(hFT, buffer, NUS_DUMP_BUFFER_SIZE, inSize)
 
 		out.write(buffer, NUS_DUMP_BUFFER_SIZE)
 		printf(".")
@@ -73,19 +73,19 @@ Sub GS_Dump()
 	out.close()
 	N64PowerOFF()
 
-	printf(ex"\nDone.\nSaved to: %s\n",fileName)
+	printf(ex"\nDone.\nSaved to: %s\n", fileName)
 End Sub
 
 Const FLASH_SHIFT = 1
 Const GS_BASE = CART_BASEADR_ROM
 
-' SST29LE010はVID=BF, DeviceId=08
+' SST29LE010はVID = BF, DeviceId = 08
 ' 16bitに8bitづつ並列接続されているので0xBF 0xBF 0x08 0x08
-Function GS_GetFlashId() AS DWord
+Function GS_GetFlashId() As DWord
 	N64PowerON()
 
 	' A0はバイト選択（上位Flash, 下位Flashの選択）なので実際のアドレスバスには出ていない
-	NUS_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT)) 
+	NUS_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
 	NUS_writeData(&HAAAA)
 
 	NUS_SetAddress(GS_BASE + (&H2AAA << FLASH_SHIFT))
@@ -108,11 +108,11 @@ Function GS_GetFlashId() AS DWord
 	NUS_SetAddress(GS_BASE)
 	NUS_readRequest(2)
 
-	Dim inbuf[NUS_DUMP_BUFFER_SIZE] AS Byte,inSize AS DWord
+	Dim inbuf[NUS_DUMP_BUFFER_SIZE] As Byte, inSize As DWord
 	ZeroMemory(inbuf, NUS_DUMP_BUFFER_SIZE)
 	FTDI_SendCommand()
-	FT_Read(hFT,inbuf,4,inSize)
-	
+	FT_Read(hFT, inbuf, 4, inSize)
+
 	N64PowerOFF()
 
 	GS_RestFlash()
@@ -124,7 +124,7 @@ Sub GS_RestFlash()
 	N64PowerON()
 
 	' A0はバイト選択（上位Flash, 下位Flashの選択）なので実際のアドレスバスには出ていない
-	NUS_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT)) 
+	NUS_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
 	NUS_writeData(&HAAAA)
 
 	NUS_SetAddress(GS_BASE + (&H2AAA << FLASH_SHIFT))
@@ -134,15 +134,15 @@ Sub GS_RestFlash()
 	NUS_writeData(&HF0F0)
 
 	FTDI_SendCommand()
-	
-	N64PowerOFF()	
+
+	N64PowerOFF()
 End Sub
 
-	
-Sub GS_EraseFlash() 
+
+Sub GS_EraseFlash()
 	N64PowerON()
 
-	NUS_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT)) 
+	NUS_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
 	NUS_writeData(&HAAAA)
 
 	NUS_SetAddress(GS_BASE + (&H2AAA << FLASH_SHIFT))
@@ -161,7 +161,7 @@ Sub GS_EraseFlash()
 	NUS_writeData(&H1010)
 
 	FTDI_SendCommand()
-	
+
 	' Wait TSCE ::: 20ms
 	Sleep(40)
 
@@ -170,8 +170,8 @@ Sub GS_EraseFlash()
 End Sub
 
 Const GS_PAGESIZE = 256
-Sub GS_WritePage(page AS DWord, data AS BytePtr)
-	NUS_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT)) 
+Sub GS_WritePage(page As DWord, data As BytePtr)
+	NUS_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
 	NUS_writeData(&HAAAA)
 
 	NUS_SetAddress(GS_BASE + (&H2AAA << FLASH_SHIFT))
@@ -180,15 +180,15 @@ Sub GS_WritePage(page AS DWord, data AS BytePtr)
 	NUS_SetAddress(GS_BASE + (&H5555 << FLASH_SHIFT))
 	NUS_writeData(&HA0A0)
 
-'	Dump(data,256, )
+'	Dump(data, 256, )
 
-	Dim i aS Long, writeData AS Word
-	For i=0 To GS_PAGESIZE-1 Step 2
+	Dim i As Long, writeData As Word
+	For i = 0 To GS_PAGESIZE-1 Step 2
 		' Set Write Address
 		NUS_SetAddress(NUS_GS_BIOS_OFFSET + page*GS_PAGESIZE + i)
 		NUS_writeData( ((data[ i ] << 8) And &HFF00) Or (data[ i+1 ] And &HFF) )
 	Next i
-	
+
 	FTDI_SendCommand()
 
 	Sleep(20)
@@ -196,9 +196,9 @@ Sub GS_WritePage(page AS DWord, data AS BytePtr)
 End Sub
 
 
-Function GS_WriteFlash(buf AS BytePtr, size AS DWord) AS BOOL
-	Dim i AS Long
-	Dim nBank AS Long
+Function GS_WriteFlash(buf As BytePtr, size As DWord) As BOOL
+	Dim i As Long
+	Dim nBank As Long
 
 	nBank = size / GS_PAGESIZE
 	For i = 0 To nBank-1
@@ -209,20 +209,20 @@ Function GS_WriteFlash(buf AS BytePtr, size AS DWord) AS BOOL
 End Function
 
 
-Function GS_WriteFromFile(filename AS BytePtr) AS BOOL
-	Dim in AS File, buf AS BytePtr
+Function GS_WriteFromFile(filename As BytePtr) As BOOL
+	Dim in As File, buf As BytePtr
 
-	if in.openFile(filename, GENERIC_READ) = FALSE Then
+	if in.openFile(filename, GENERIC_READ) = FALSE then
 		GS_WriteFromFile = FALSE
 		ExitFunction
-	Endif
+	endif
 
-	GS_EraseFlash() 
+	GS_EraseFlash()
 
 	Dim size As Long
 	size = in.length()
 	if size>GS_BIOS_SIZE then size = GS_BIOS_SIZE
-	
+
 	buf = calloc( size )
 	in.read( buf, size )
 
@@ -231,10 +231,10 @@ Function GS_WriteFromFile(filename AS BytePtr) AS BOOL
 	Sleep(10)
 
 	GS_WriteFlash( buf, size )
-				
+
 	N64PowerOFF()
 	FTDI_SendCommand()
-	
+
 	in.close()
 	free(buf)
 
