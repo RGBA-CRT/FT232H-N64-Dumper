@@ -87,7 +87,7 @@ End
 Sub Main()
 
 
-	Print " - N64 ROM DUMPER with FT232H v1.1 - PROGRAMMED BY RGBA_CRT 2016-2022"
+	Print " - N64 ROM DUMPER with FT232H v1.1 - PROGRAMMED BY RGBA_CRT 2016-2023"
 	Print
 
 	DevIdx = ListUpFTDI_Devices()
@@ -111,8 +111,7 @@ Sub Main()
 		Print ex"Open OK\n"
 	endif
 
-	if SetupFTDI_Device(hFT) <> TRUE then Print "setup err"
-
+	if NUS_InitRomAccess(hFT) <> TRUE then Print "err":ExitFunction
 	InitSPI()
 	NUS_InitPorts()
 	FTDI_SendCommand()
@@ -163,7 +162,7 @@ Sub Main()
 			Case 1
 				lstrcat(FileName, ".z64")
 
-				if DumpFullRom(FileName, header.RomSize) <> TRUE then Print " [Error]":Goto *EXIT_PROGRAM
+				DumpFullRom(FileName, header.RomSize)
 
 			Case 2
 				lstrcat(FileName, ".z64")
@@ -184,6 +183,14 @@ Sub Main()
 
 				if save_type = NUS_SAVE_UNKNOWN or save_type = NUS_SAVE_NONE then
 					printf(ex"dump save abort.\n")
+				else if save_type = NUS_SAVE_EEPROM then
+					SaveLE = FileName+MakeStr(".eep")
+					SaveBE = FileName+MakeStr(".eeprom")
+					if DumpEEPROM_File(SaveLE) = TRUE then
+						CopyFile(SaveLE, SaveBE, FALSE)
+						printf(ex"Saved EEPROM dump for Ares to \q%s\q\n", SaveBE)
+						printf(ex"Saved EEPROM dump for PJ64 to \q%s\q\n", SaveLE)
+					endif
 				else
 					Dim ltsave_ext As BytePtr
 					if save_type = NUS_SAVE_SRAM then
@@ -217,8 +224,8 @@ Sub Main()
 					ConvertLittleEndian(SaveBE, SaveLE)
 					printf(ex"Saved sram dump for PJ64 to \q%s\q\n", SaveLE)
 
-					N64PowerOFF()
 				endif
+				N64PowerOFF()
 			Case 24
 				lstrcat(FileName, "_debug.sra")
 
@@ -246,7 +253,7 @@ Sub Main()
 					Input ex"[ENTER:Continue][1:InputAdr][2:Reload][3:Exit]\n> ", op
 
 					if op = 0 then
-						adr + = 128
+						adr + = TEST_DUMP_BLOCK_SIZE
 
 					else if op = 1 then
 						Input ex"Address : ", adrStr
@@ -379,6 +386,81 @@ Sub Main()
 				IntelFlash_SetReadConfigRegister(CART_BASEADR_ROM)
 				flash_printID(CART_BASEADR_ROM)
 				N64PowerOFF()
+
+			case 80
+				N64PowerON()
+				if NUS_InitJoybusAccess(hFT, NUS_JOYBUS_CONTROLLER) <> TRUE then Print "err":end
+
+				do
+					'Joybus Controller test
+
+					Dim jret As NUS_JOYBUS_ERR, decbuf[4] As Byte
+					Dim info As NUS_JoybusDeviceInfo
+					jret = NUS_JoybusGetDeviceInfo(VarPtr(info))
+					if jret <> NUS_JOYBUS_OK then printf(ex"Joybus error: %s\n", NUS_JoybusErrorText(jret)):ExitDo
+					printf(ex"Joybus Device: [%04x]%s status = %02x\t\n", info.id, NUS_JoybusDeviceText(info.id), info.status)
+
+					jret = NUS_JoybusGetControllerInput(decbuf, 4)
+					if jret <> NUS_JOYBUS_OK then printf(ex"Joybus error: %s\n", NUS_JoybusErrorText(jret)):ExitDo
+					Dump(decbuf, 4)
+
+					Dim BUTTON_LABEL = "><v^SZBArlduRL?*" As BytePtr
+					For i = 0 to 15
+						if (GetWord(decbuf) >> i ) And 1 then
+							printf("%c ", BUTTON_LABEL[i])
+						else
+							printf(" ")
+						endif
+					Next i
+					printf(ex"%4d %4d\n", (decbuf[2]<<24) As Long >> 24, (decbuf[3]<<24) As Long >> 24)
+					ConsoleReturnLine()
+					ConsoleLocateRelative(0, -4)
+
+					Sleep(50)
+				Loop
+
+				NUS_InitRomAccess(hFT)
+				N64PowerOFF()
+
+			case 81
+				N64PowerON()
+				if NUS_InitJoybusAccess(hFT, NUS_JOYBUS_EEPROM) <> TRUE then Print "err":end
+
+					'EEPROM test
+					Dim eepbuf[8] As Byte, block As Long
+'					Dim info As NUS_JoybusDeviceInfo
+					jret = NUS_JoybusGetDeviceInfo(VarPtr(info))
+					if jret <> NUS_JOYBUS_OK then printf(ex"Joybus error: %s\n", NUS_JoybusErrorText(jret))
+					printf(ex"Joybus Device: [%04x]%s status = %02x\t\n", info.id, NUS_JoybusDeviceText(info.id), info.status)
+
+					if info.id = NUS_JB_DEV_ID_EEPROM_4K then
+						block = 4*1024/8/8
+					else if info.id = NUS_JB_DEV_ID_EEPROM_16K then
+						block = 16*1024/8/8
+					else
+						printf(ex"Dump save error: Unknown EEPROM type.\n")
+					endif
+
+
+					Dim eepsave As File
+					eepsave.openFile("test.eep", GENERIC_WRITE)
+					for i = 0 To block-1
+						jret = NUS_JoybusReadEEPROM(eepbuf, i)
+						if jret <> NUS_JOYBUS_OK then
+							printf(ex"Joybus error: %s\n", NUS_JoybusErrorText(jret))
+							ExitFor
+						endif
+						Dump(eepbuf, 8, i*8)
+						eepsave.write(eepbuf, 8)
+					Next i
+					eepsave.close()
+
+
+				NUS_InitRomAccess(hFT)
+				N64PowerOFF()
+			case 82
+				N64PowerON()
+
 		End Select
 
 		Print ex"\n\n"
@@ -452,7 +534,7 @@ Function DumpFullRom(fileName As BytePtr, RomSize As DWord)(BaseAddress As DWord
 	Do
 		' Byte Address
 		NUS_SetAddress(BaseAddress + reqAdr)
-		NUS_readRequest(NUS_DUMP_BUFFER_SIZE/2)
+		NUS_readRequest(NUS_DUMP_BUFFER_SIZE>>1)
 
 		if FTDI_SendCommand() <> FT_OK then Goto *DFR_EXIT
 		if FT_Read(hFT, inbuf, NUS_DUMP_BUFFER_SIZE, inSize) <> FT_OK then Goto *DFR_EXIT
@@ -483,6 +565,7 @@ Function DumpFullRom(fileName As BytePtr, RomSize As DWord)(BaseAddress As DWord
 	free(inbuf)
 	out.close()
 	N64PowerOFF()
+	FT_Purge(hFT, FT_PURGE_RX or FT_PURGE_TX)
 
 	NotifySound()
 End Function
@@ -533,7 +616,7 @@ Sub GetRomInfo(header As *NUS_ROM_HEADER)
 	For i = NUS_TITLE_LEN To 0 Step -1
 		'スペース埋めを解除
 		if header->Title[i] > &H20 then
-			exitfor
+			ExitFor
 		endif
 		header->Title[i] = 0
 	Next i
@@ -706,7 +789,7 @@ Sub PrintBuffer()
 End Sub
 
 
-Const TEST_DUMP_BLOCK_SIZE = &H10
+Const TEST_DUMP_BLOCK_SIZE = &H200
 Sub testDump(Adr As DWord)
 	N64PowerON()
 	NUS_SetAddress(NUS_GS_HEADER_OFFSET + Adr)

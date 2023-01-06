@@ -8,6 +8,7 @@ git ls-files| grep -e .[as]bp | xargs sed -i -r -e 's/,[ 	]*/, /g'
 git ls-files| grep -e .[as]bp | xargs sed -i -e "s/=/ = /g" -e "s/<>/ <> /g" -e "s/= *>/ >= /g" -e "s/> *=/ >= /g" -e "s/< *=/ <= /g" -e "s/= *</ <= /g"
 git ls-files| grep -e .[as]bp | xargs sed -i -e "s/DWord/DWord/gI" -e "s/ As Long/ As Long/gI" -e "s/ As / As /gI"
 git ls-files| grep -e .[as]bp | xargs sed -i -e "s/sizeof/sizeof/gI" -e "s/Dim /Dim /gI" -e "s/ifdef/ifdef/gI"
+git ls-files| grep -e .[as]bp | xargs sed -i -e "s/Exit *Do/ExitDo/gI" -e "s/Exit *For/ExitFor/gI" -e "s/Exit *While/ExitWhile/gI"
 
 @REM ==== FIXUP ====
 @REM duplicate whitespace test

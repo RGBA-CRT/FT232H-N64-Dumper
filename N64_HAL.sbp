@@ -29,7 +29,7 @@ Const SDAT_DDR_IN = &H02	'1 = input
 Const SDAT_DDR_OUT = &H00
 
 Sub N64PowerON()
-	MCP_WriteRegister(MCP23017_GPIOB, EEP_CLK)
+	MCP_WriteRegister(MCP23017_GPIOB, EEP_CLK or SDAT_DDR_IN)
 	FTDI_SendCommand()
 	MCP_WriteRegister(MCP23017_GPIOB, RESET or EEP_CLK)
 	FTDI_SendCommand()
@@ -158,3 +158,132 @@ Sub NUS_writeData(outData As Word)
 	FT_WAIT(4)
 End Sub
 
+Function NUS_InitRomAccess(hFT As HANDLE) As BOOL
+	NUS_InitRomAccess = FT_InitRomAccess(hFT)
+End Function
+
+Enum NUS_JOYBUS_TYPE
+	NUS_JOYBUS_EEPROM
+	NUS_JOYBUS_CONTROLLER
+End Enum
+
+Function NUS_InitJoybusAccess(hFT As HANDLE, bus_type As NUS_JOYBUS_TYPE) As BOOL
+	if bus_type = NUS_JOYBUS_EEPROM then
+		NUS_InitJoybusAccess = FT_InitJoybusAccessEEPROM(hFT)
+	else
+		NUS_InitJoybusAccess = FT_InitJoybusAccessController(hFT)
+	endif
+End Function
+
+Enum NUS_JOYBUS_ERR
+	NUS_JOYBUS_OK = 0
+	NUS_JOYBUS_SEND_ERR
+	NUS_JOYBUS_RECEIVE_ERR
+	NUS_JOYBUS_LOGIC_ERR
+	NUS_JOYBUS_TIMEOUT
+	_NUS_JOYBUS_ERR_MAX
+End Enum
+
+Function NUS_JoybusErrorText(err As NUS_JOYBUS_ERR) As BytePtr
+	Dim tbl[_NUS_JOYBUS_ERR_MAX] = [
+		"NUS_JOYBUS_OK", _
+		"NUS_JOYBUS_SEND_ERR", _
+		"NUS_JOYBUS_RECEIVE_ERR", _
+		"NUS_JOYBUS_LOGIC_ERR", _
+		"NUS_JOYBUS_TIMEOUT", _
+		"_NUS_JOYBUS_ERR_MAX", _
+	] As BytePtr
+	NUS_JoybusErrorText = tbl[err]
+End Function
+
+Function NUS_JoybusCommand(cmd As BytePtr, cmdSize As Long, result As BytePtr, resultSize As Long) As NUS_JOYBUS_ERR
+	/*Dim dwab As DWord, i As DWord
+	Dim buf2[128] As Byte, readSize As DWord*/
+
+	' encode command
+	Dim cmd_enc As BufferClass, result_enc As BufferClass
+	if FT_JoybusEncode(cmd, cmdSize, cmd_enc) <> TRUE then
+		NUS_JoybusCommand = NUS_JOYBUS_LOGIC_ERR
+		exitfunction
+	endif
+'	Print "CMD"
+'	Dump(cmd_enc.ptr, cmd_enc.length())
+
+	Dim readSize As DWord, dwab As DWord
+	readSize = cmd_enc.length() + /* responce bytes */ resultSize*4+1
+	result_enc.alloc(readSize)
+
+	if FT_Write(hFT, cmd_enc.ptr, cmd_enc.length(), dwab) <> FT_OK then
+		NUS_JoybusCommand = NUS_JOYBUS_SEND_ERR
+		ExitFunction
+	endif
+
+	if FT_Read(hFT, result_enc.ptr, readSize, dwab) <> FT_OK then
+		NUS_JoybusCommand = NUS_JOYBUS_RECEIVE_ERR
+		ExitFunction
+	endif
+	result_enc.setLength(readSize)
+
+	if dwab <> readSize then
+		NUS_JoybusCommand = NUS_JOYBUS_TIMEOUT
+		ExitFunction
+	endif
+
+	FT_GetQueueStatus(hFT, readSize)
+	if readSize then
+		printf(ex"######### JoybusCommand: read leftover found. %d\n", readSize)
+		FT_Purge(hFT, FT_PURGE_RX or FT_PURGE_TX)
+	endif
+'	Dump(result_enc.ptr, result_enc.length())
+
+	if FT_JoybusDecode(result_enc.ptr+cmd_enc.length(), _
+										result_enc.length() - cmd_enc.length(), _
+										result, resultSize) <> TRUE then
+		NUS_JoybusCommand = NUS_JOYBUS_LOGIC_ERR
+		printf(ex"RAW JOYBUS RX DATA:\n")
+		Dump(result_enc.ptr, result_enc.length())
+		exitfunction
+	endif
+	NUS_JoybusCommand = NUS_JOYBUS_OK
+End Function
+
+Function NUS_JoybusGetControllerInput(result As BytePtr, resultSize As Long) As NUS_JOYBUS_ERR
+'	NUS_JoybusCommand(ex"\x08\x08\x08\xE8\x00", 5, 
+	NUS_JoybusGetControllerInput = NUS_JoybusCommand(ex"\x01", 1, result, resultSize)
+End Function
+
+Type Align(1) NUS_JoybusDeviceInfo
+	id As Word
+	status As Byte
+End Type
+
+Function NUS_JoybusGetDeviceInfo(result As *NUS_JoybusDeviceInfo) As NUS_JOYBUS_ERR
+	NUS_JoybusGetDeviceInfo = NUS_JoybusCommand(ex"\x00", 1, result, sizeof(NUS_JoybusDeviceInfo))
+End Function
+
+Const NUS_JB_DEV_ID_CONTROLLER = &H0005
+Const NUS_JB_DEV_ID_EEPROM_4K = &H8000
+Const NUS_JB_DEV_ID_EEPROM_16K = &HC000
+
+Function NUS_JoybusDeviceText(id As Word) As BytePtr
+	Select Case id
+		Case NUS_JB_DEV_ID_CONTROLLER
+			NUS_JoybusDeviceText = "Controller"
+
+		Case NUS_JB_DEV_ID_EEPROM_4K
+			NUS_JoybusDeviceText = "4 Kbit EEPROM"
+
+		Case NUS_JB_DEV_ID_EEPROM_16K
+			NUS_JoybusDeviceText = "16 Kbit EEPROM"
+
+		Case else
+			NUS_JoybusDeviceText = "unknown"
+	End Select
+End Function
+
+
+Function NUS_JoybusReadEEPROM(buf As *Byte, page As Byte) As NUS_JOYBUS_ERR
+	Dim cmdbuf[2] = [&H04, &H00] As Byte
+	cmdbuf[1] = page
+	NUS_JoybusReadEEPROM = NUS_JoybusCommand(cmdbuf, 2, buf, 8)
+End Function
