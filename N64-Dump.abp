@@ -120,7 +120,7 @@ Sub Main()
 	Dim biosPath As String
 	Dim op As DWord, header As NUS_ROM_HEADER
 	Dim adrStr As String, adr As DWord
-	Dim FileName[NUS_TITLE_LEN+16] As Byte, i As Long
+	Dim FileName[MAX_PATH] As Byte, i As Long
 	Dim save_type As NUS_SAVE_TYPE
 	Dim SaveBE As String, SaveLE As String
 
@@ -146,18 +146,7 @@ Sub Main()
 
 		flush()
 
-		if op <> 9999 then
-			' ファイル名を生成
-			memcpy(FileName, header.Title, NUS_TITLE_LEN)
-
-			' ファイル名に使えない文字をエスケープ
-			/*For i = 0 To NUS_TITLE_LEN
-				Dim ct As DWord
-				ct = PathGetCharType(FileName[i])
-				if ct = GCT_SEPARATOR or ct = GCT_INVALID then _
-					FileName[i] = GetByte("_")
-			Next i*/
-		endif
+		MakeRomFileName(FileName, MAX_PATH, VarPtr(header))
 
 		Select Case op
 			Case 1
@@ -446,7 +435,8 @@ Function DumpFullRom(fileName As BytePtr, RomSize As DWord)(BaseAddress As DWord
 	NUS_SetAddress(BaseAddress)
 	if FTDI_SendCommand() <> FT_OK then Goto *DFR_EXIT
 
-	Print "dumping data..."
+	printf(ex"output file name: %s\n", fileName)
+	printf(ex"dumping ROM...\n")
 	Dim time As DWord, lt As DWord, retry As DWord
 	time = GetTickCount()
 	Do
@@ -723,4 +713,14 @@ Sub testDump(Adr As DWord)
 
 End Sub
 
+Function MakeRomFileName(buf As BytePtr, buflen As DWord, header As *NUS_ROM_HEADER) As Long
+	Dim rom_title[MAX_PATH] As Byte
+	Dim ver As Long
+	ver = 10 + (header->Raw.Version) As Long
 
+	wsprintf(rom_title, "%s (%c) (V%d.%d)", 
+		header->Title, header->Raw.GameID[3], ver / 10, ver Mod 10)
+
+	memcpy(buf, rom_title, buflen-1)
+	buf[buflen-1] = 0
+End Function
