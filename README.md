@@ -2,11 +2,38 @@
 N64 ROM Dumper using FTDI FT232H
  + http://rgbacrt.seesaa.net/article/441695249.html
 
-## 概要 / About
-FT232HとMCP23S17を用いたN64の吸出し機です。ROMとSRAMの吸出しができます。EEPROMには対応していません。部品数も少なく、USB接続で高速(420KB/s)な吸出しができます。  
+## About
+部品点数が少なく手に入りやすい部品で作ったN64ROM吸い出し機です。
+セーブデータの吸い出しに対応しており、SRAM/FLASH, v1.1以降はEEPROMも吸い出し可能です。書き込みは未実装。
+FT232Hを使うことで、300～400KB/s程度の比較的速い速度で吸い出す事ができます。
 ActiveBasic4で雑に書いたテストプログラムです。Windowsでしか動作しません。
 
-This is N64 cart dumper using FTDI FT232H. It can dump ROM and SRAM by USB connection. 
+This is N64 cart dumper using FTDI FT232H. It can dump ROM and SRAM/Flash and EEPROM by USB connection. 
+
+![ss](https://user-images.githubusercontent.com/19349443/212477295-c5c14b61-5623-4d53-bb38-17cf9d9db5b5.png)
+
+## Feature
+### Supported
+- N64 ROM Dump
+- SAVE SRAM Dump
+  - デザエモン3DのSRAM*3に対応
+- SAVE FLASH Dump
+- SAVE EEPROM Dump
+- プロアクションリプレイのROM書き込み
+  - プロアクションリプレイライトでのみ動作確認
+
+### Not Supported
+- SAVE SRAM/FLASH/EEPROM write
+- Controller Pack dump
+- 吸い出したROMのハッシュチェック
+
+## 回路図 / Circuit
+![回路図](https://raw.githubusercontent.com/RGBA-CRT/FT232H-N64-Dumper/master/Kairo_v1.0.png "回路図")    
+
+- 部品の定数の調整、パスコンなどは適宜環境似合わせて調整してください。
+- [回路をv0.0からv1.1へ更新する際のガイド](https://github.com/RGBA-CRT/FT232H-N64-Dumper/wiki/Circuit-v1.0)
+- FT232HのEEPROMの設定が必要です。
+   - FT_Progでconfig_FT232H.xmlを書き込んでください。[FT232H-EEPROM-config](https://github.com/RGBA-CRT/FT232H-N64-Dumper/wiki/FT232H-EEPROM-config)
 
 ## セーブデータに関する注意　/ Warning for save data
  * セーブデータ保護回路を省いた場合、SRAMを用いたソフト（時のオカリナなど）のセーブが飛ぶ可能性が高くなります。
@@ -19,11 +46,9 @@ This is N64 cart dumper using FTDI FT232H. It can dump ROM and SRAM by USB conne
  * Do not remove the cartridge during the access LED is lit.
 
 ## 開発環境 / Environment
-	OS : Windows 7
-	Parts : AE-FT232HL + MCP23S17 + EdgeConnector(N64) (+ 2SA1015 + 10KΩ reg)
-	Language ： [ActiveBasic ver4](https://www.activebasic.com/) + RGBALib
-	FT232H-Config ： QDC（kitahei88氏作><http://kitahei88.blog.fc2.com/blog-entry-124.html>）と同じ設定
-	
+- TargetOS : Windows
+- Main-Parts : FT232HL + MCP23S17
+
  * コンパイルにはこちらのライブラリが必要です。depends following library.  
 <https://github.com/RGBA-CRT/RGBALib>
 
@@ -34,18 +59,9 @@ This is N64 cart dumper using FTDI FT232H. It can dump ROM and SRAM by USB conne
  * 	[http://www.ftdichip.com/Support/FTDocuments.htm]  
  * 	[http://akizukidenshi.com/download/ds/microchip/mcp23017_mcp23s17.pdf]  
  * 	[http://www.hdl.co.jp/USB/mpsse_spi/]  
-
-## 接続 / Connection
- * 	FT232H-ADBus0-3(SPI) <-> MCP23S17-SPI
- * 	FT232H-ADBus4-7  <-> N64[/WE /RE ALE_L ALE_H]
- * 	FT232H-ACBus0-7  <-> N64[AD0-7]
- * 	MCP23S17-GPIOA <-> N64[AD8~15]
- * 	MCP23S17-GPIOB <-> N64[EEP_CLK /RESET S_DAT] + N64Power
-
-## 画像 / pict
-非常に適当な回路図  
-![回路図](https://raw.githubusercontent.com/RGBA-CRT/FT232H-N64-Dumper/master/Kairo.PNG "回路図")    
-  
-スクショ  
-![SS](http://i.imgur.com/ydIlbni.jpg "スクショ")   
-This is a screen shot of the old version, the transfer rate of the latest version is 420 KB/s  
+ * 	[http://www.qwertymodo.com/hardware-projects/n64/n64-controller]
+ * 	[https://twitter.com/HelicopterP64/status/1608976626125275137]
+ 
+ ----
+Programmed by RGBA_CRT 2016-2023  
+Project url: https://github.com/RGBA-CRT/FT232H-N64-Dumper
