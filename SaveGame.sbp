@@ -109,7 +109,7 @@ Function SaveFlash_Detect() As NUS_SAVE_TYPE
 
 		Dim FlashType As BytePtr
 		FlashType = SaveFlash_GetFlashChipLabel(status.chip_id)
-		printf(ex"Flash Type: %s\n", FlashType)
+		printf(ex"Save Detect: Flash Type: %s\n", FlashType)
 	else
 		SaveFlash_Detect = NUS_SAVE_UNKNOWN
 	endif
@@ -117,7 +117,7 @@ End Function
 
 Const SaveSram_Detect_SloveSize = 128
 Const SaveSram_Detect_FFFill_CRC = &H652d544c
-Function SaveSram_Detect()(base_addr As DWord) As BOOL
+Function SaveSram_Detect()(base_addr As DWord, pp_hash As *DWord) As BOOL
 	if base_addr = 0 then base_addr = CART_BASEADR_SRAM
 	NUS_SetAddress(base_addr)
 	NUS_readRequest(SaveSram_Detect_SloveSize>>1)
@@ -126,36 +126,58 @@ Function SaveSram_Detect()(base_addr As DWord) As BOOL
 	FTDI_SendCommand()
 	FT_Read(hFT, inbuf, SaveSram_Detect_SloveSize, inSize)
 
-
 	Dim hash As DWord
 	hash = crc32.GetHash(inbuf, NUS_SLOVE_SAMPLE_SIZE1)
 	if hash <> SaveSram_Detect_FFFill_CRC then
-		printf(ex"may be sram found\n")
-		Dump(inbuf, SaveSram_Detect_SloveSize)
-		printf(ex"hash = %x\n", hash)
+		printf(ex"Save Detect: SRAM found. slove hash = %x\n", hash)
+'		Dump(inbuf, SaveSram_Detect_SloveSize)
 		SaveSram_Detect = TRUE
 	else
 		SaveSram_Detect = FALSE
 	endif
+	if pp_hash then SetDWord(pp_hash, hash)
 End Function
 
 Const CART_BASEADR_SRAM_2ND = &H08040000
 Const CART_BASEADR_SRAM_3RD = &H08080000
 Function SaveSramX3_Detect() As BOOL
-	if SaveSram_Detect(CART_BASEADR_SRAM) = FALSE then
+	Dim hash1 As DWord, hash2 As DWord, hash3 As DWord
+	if SaveSram_Detect(CART_BASEADR_SRAM, VarPtr(hash1)) = FALSE then
 		SaveSramX3_Detect = FALSE
 		exitfunction
 	endif
-	if SaveSram_Detect(CART_BASEADR_SRAM_2ND) = FALSE then
+	if SaveSram_Detect(CART_BASEADR_SRAM_2ND, VarPtr(hash2)) = FALSE then
 		SaveSramX3_Detect = FALSE
 		exitfunction
 	endif
-	if SaveSram_Detect(CART_BASEADR_SRAM_3RD) = FALSE then
+	if SaveSram_Detect(CART_BASEADR_SRAM_3RD, VarPtr(hash3)) = FALSE then
 		SaveSramX3_Detect = FALSE
-		printf(ex"WARNING: 2nd SRAM found. this is not surpported.\n")
+		printf(ex"WARNING: SRAMx2 found. this is not surpported.\n")
 		exitfunction
 	endif
-	SaveSramX3_Detect = TRUE
+	if (hash1 = hash2) And (hash2 = hash3) then
+		printf(ex"Save Detect: not SRAMx3 because all bank same data.\n")
+		SaveSramX3_Detect = FALSE
+	else
+		SaveSramX3_Detect = TRUE
+	endif
+End Function
+
+Function SaveEEPROM_Detect() As BOOL
+	While NUS_InitJoybusAccess(hFT, NUS_JOYBUS_EEPROM)
+		Dim jret As NUS_JOYBUS_ERR, decbuf[4] As Byte
+		Dim info As NUS_JoybusDeviceInfo
+
+		jret = NUS_JoybusGetDeviceInfo(VarPtr(info))
+		if jret <> NUS_JOYBUS_OK then ExitWhile
+		printf(ex"Save Detect: Joybus Device: [%04x]%s status = %02x\t\n", info.id, NUS_JoybusDeviceText(info.id), info.status)
+
+		if (info.id = NUS_JB_DEV_ID_EEPROM_4K) or (info.id = NUS_JB_DEV_ID_EEPROM_16K) then
+			SaveEEPROM_Detect = TRUE
+		endif
+		ExitWhile
+	Wend
+	NUS_InitRomAccess(hFT)
 End Function
 
 
@@ -191,6 +213,8 @@ Function SloveSaveType() As NUS_SAVE_TYPE
 			SloveSaveType = NUS_SAVE_SRAMx3
 		else if SaveSram_Detect() then
 			SloveSaveType = NUS_SAVE_SRAM
+		else if SaveEEPROM_Detect() then
+			SloveSaveType = NUS_SAVE_EEPROM
 		else
 			'現時点でEEPROMかセーブなしか判定できないのでUnknownを返す
 			SloveSaveType = NUS_SAVE_UNKNOWN
@@ -295,4 +319,47 @@ Function DumpSram(buffer As BytePtr, SramSize As DWord, SaveType As NUS_SAVE_TYP
 
 End Function
 
+Function DumpEEPROM_File(fileName As BytePtr) As Long
+	Dim jret As NUS_JOYBUS_ERR
+	Dim info As NUS_JoybusDeviceInfo
+	Dim eepbuf[8] As Byte, block As Long, i As Long
+
+	Print
+
+	While NUS_InitJoybusAccess(hFT, NUS_JOYBUS_EEPROM)
+		jret = NUS_JoybusGetDeviceInfo(VarPtr(info))
+		if jret <> NUS_JOYBUS_OK then
+			printf(ex"Joybus error: %s\n", NUS_JoybusErrorText(jret))
+			ExitWhile
+		endif
+
+		if info.id = NUS_JB_DEV_ID_EEPROM_4K then
+			block = 4*1024/8/8
+		else if info.id = NUS_JB_DEV_ID_EEPROM_16K then
+			block = 16*1024/8/8
+		else
+			printf(ex"Dump save error: Unknown EEPROM type.\n")
+			ExitWhile
+		endif
+
+		Dim eepsave As File
+		eepsave.openFile(fileName, GENERIC_WRITE)
+		for i = 0 To block-1
+			printf(ex"Reading EEPROM block %d/%d\r", i, block-1)
+			jret = NUS_JoybusReadEEPROM(eepbuf, i)
+			if jret <> NUS_JOYBUS_OK then
+				printf(ex"Joybus error: %s\n", NUS_JoybusErrorText(jret))
+				ExitWhile
+			endif
+		'	Dump(eepbuf, 8, i*8)
+			eepsave.write(eepbuf, 8)
+		Next i
+		eepsave.close()
+
+		DumpEEPROM_File = TRUE
+		ExitWhile
+	Wend
+	NUS_InitRomAccess(hFT)
+	Print
+End Function
 

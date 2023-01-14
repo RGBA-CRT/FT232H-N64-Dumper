@@ -172,7 +172,7 @@ Function IntelFlash_WaitWritable(baseAddr As DWord) As BOOL
 		 NUS_SetAddress(baseAddr)
 		 NUS_writeData(&H50)
 
-			if retry>&HFFFF then exitDo
+			if retry>&HFFFF then ExitDo
 		endif
 
 

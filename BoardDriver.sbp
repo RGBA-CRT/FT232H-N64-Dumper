@@ -181,4 +181,113 @@ Sub FT_WAIT(val As Word)
 End Sub
 
 
+Function FT_InitRomAccess(hFT As HANDLE) As BOOL
+'	if FT_SetBitMode(hFT, &H0, FT_BITMODE_MPSSE) <> FT_OK then ExitFunction
+	if SetupFTDI_Device(hFT) <> TRUE then ExitFunction
+	InitSPI()
+	FTDI_SendCommand()
+
+	FT_InitRomAccess = TRUE
+End Function
+
+' ============= JOYBUS ==============
+' idea by http://www.qwertymodo.com/hardware-projects/n64/n64-controller
+Function FT_InitJoybusAccessEEPROM(hFT As HANDLE) As BOOL
+	if FT_SetBitMode(hFT, &H0, FT_BITMODE_RESET) <> FT_OK then ExitFunction
+'	if FT_SetBaudRate(hFT, 4500000) <> FT_OK then ExitFunction/*for 7.5MHz*/
+	if FT_SetBaudRate(hFT, 1150000) <> FT_OK then ExitFunction /* for 1.875MHz */
+	if FT_SetChars(hFT, FALSE, 0, FALSE, 0) <> FT_OK then ExitFunction
+	if FT_SetTimeouts(hFT, 300, 300)	 <> FT_OK then ExitFunction
+
+	FT_Purge(hFT, FT_PURGE_TX or FT_PURGE_RX)
+
+	FT_InitJoybusAccessEEPROM = TRUE
+End Function
+
+Function FT_InitJoybusAccessController(hFT As HANDLE) As BOOL
+	if FT_SetBitMode(hFT, &H0, FT_BITMODE_RESET) <> FT_OK then ExitFunction
+	if FT_SetBaudRate(hFT, 1250000) <> FT_OK then ExitFunction
+	if FT_SetChars(hFT, FALSE, 0, FALSE, 0) <> FT_OK then ExitFunction
+	if FT_SetTimeouts(hFT, 300, 300)	 <> FT_OK then ExitFunction
+
+	FT_InitJoybusAccessController = TRUE
+End Function
+/*
+Function FT_JoybusDecode2Bit(in As Byte, ByRef err As DWord) As DWord
+	Dim out As Byte
+	if (in And &HF0) = &HF0 then
+		FT_JoybusDecode2Bit = 1
+	else if (in And &HF0) = &H00 then
+	else
+		err++
+	endif
+	if (in And &H0F) = &H0E then
+		FT_JoybusDecode2Bit or = 2
+	else if (in And &H0F) = &H08 then
+	else
+		err++
+	endif
+End Function
+*/
+Function FT_JoybusDecode2Bit(in As Byte, ByRef err As DWord) As DWord
+	Dim out As Byte
+	if (in And &HF0) = &HE0 then
+'	if (in And &HF0 Or &H20) = &HE0 then
+		FT_JoybusDecode2Bit = 1
+	else if (in And &HF0) = &H00 then
+	else
+		err++
+	endif
+	if ((in And &H0F Or &H01) = &H0F) then
+'	if ((in And &H0F) = &H0F) then
+		FT_JoybusDecode2Bit or = 2
+	else if (in And &H0F) = &H08 then
+	else
+		err++
+	endif
+	if err>0 And err<2 then		printf(ex"JOYBUS LOGIC: first err %02X\n", in)
+End Function
+
+Function FT_JoybusEncode2Bit(in As Byte) As Byte
+	Select Case (in And 3)
+		Case 0
+			FT_JoybusEncode2Bit = &H08
+		Case 1
+			FT_JoybusEncode2Bit = &HE8
+		Case 2
+			FT_JoybusEncode2Bit = &H0F
+		Case 3
+			FT_JoybusEncode2Bit = &HEF
+	End Select
+End Function
+
+function FT_JoybusDecode(input As BytePtr, inputSize As DWord, output As BytePtr, outputSize As DWord) As BOOL
+	Dim i As DWord, loop_num As DWord, err As DWord
+	loop_num = inputSize / 4
+	if outputSize < loop_num then loop_num = outputSize
+	for i = 0 to loop_num-1
+		output[i] = FT_JoybusDecode2Bit(input[i*4+0], err)<<6 _
+			 	 or FT_JoybusDecode2Bit(input[i*4+1], err)<<4 _
+			 	 or FT_JoybusDecode2Bit(input[i*4+2], err)<<2 _
+				 or FT_JoybusDecode2Bit(input[i*4+3], err)
+	next i
+	if err then ExitFunction
+
+	FT_JoybusDecode = TRUE
+End Function
+
+function FT_JoybusEncode(input As BytePtr, inputSize As DWord, ByRef output As BufferClass) As BOOL
+	Dim i As DWord, buf[4] As Byte
+	output.alloc(inputSize*4 + 1)
+	for i = 0 To inputSize-1
+		buf[0] = FT_JoybusEncode2Bit(input[i]>>6)
+		buf[1] = FT_JoybusEncode2Bit(input[i]>>4)
+		buf[2] = FT_JoybusEncode2Bit(input[i]>>2)
+		buf[3] = FT_JoybusEncode2Bit(input[i])
+		output.cat(buf, 4)
+	Next i
+	output.cat(ex"\x00", 1) 'STOP BIT
+	FT_JoybusEncode = TRUE
+End Function
+
 
