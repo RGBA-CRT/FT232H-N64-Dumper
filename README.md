@@ -4,7 +4,7 @@ N64 ROM Dumper using FTDI FT232H
 
 ## About
 部品点数が少なく手に入りやすい部品で作ったN64ROM吸い出し機です。
-セーブデータの吸い出しに対応しており、SRAM/FLASH, v1.1以降はEEPROMも吸い出し可能です。書き込みは未実装。
+セーブデータの吸い出しに対応しており、SRAM/FLASH, v1.0以降はEEPROMも吸い出し可能です。書き込みは未実装。
 FT232Hを使うことで、300～400KB/s程度の比較的速い速度で吸い出す事ができます。
 ActiveBasic4で雑に書いたテストプログラムです。Windowsでしか動作しません。
 
@@ -31,25 +31,23 @@ This is N64 cart dumper using FTDI FT232H. It can dump ROM and SRAM/Flash and EE
 ![回路図](https://raw.githubusercontent.com/RGBA-CRT/FT232H-N64-Dumper/master/Kairo_v1.0.png "回路図")    
 
 - 部品の定数の調整、パスコンなどは適宜環境似合わせて調整してください。
-- [回路をv0.0からv1.1へ更新する際のガイド](https://github.com/RGBA-CRT/FT232H-N64-Dumper/wiki/Circuit-v1.0)
+- SRAM Protect Blockは省略可能です。省略した場合、SRAMのセーブデータは保証されません。
+- EEPROM CLK Genは省略可能です。省略した場合、EEPROMのセーブデータの吸い出しはできません。
+- 回路v1.0からEEPROMに対応しました。[回路をv0.0からv1.0更新する際のガイド](https://github.com/RGBA-CRT/FT232H-N64-Dumper/wiki/Circuit-v1.0)
 - FT232HのEEPROMの設定が必要です。
    - FT_Progでconfig_FT232H.xmlを書き込んでください。[FT232H-EEPROM-config](https://github.com/RGBA-CRT/FT232H-N64-Dumper/wiki/FT232H-EEPROM-config)
 
 ## セーブデータに関する注意　/ Warning for save data
- * セーブデータ保護回路を省いた場合、SRAMを用いたソフト（時のオカリナなど）のセーブが飛ぶ可能性が高くなります。
- * 保護回路を入れたとしても消えるものは消えます。
+ * セーブデータ保護回路がある場合でも、SRAMを用いたソフト（時のオカリナなど）のセーブデータは破損しやすいため注意してください。
  * Windows側でソフトを立ち上げ、[INSERT CART AND PRESS ENTER]の表示を見るまでカートリッジを挿入しないでください。
  * 吸出し中や、アクセスLEDが点灯中はカートリッジを抜かないでください。
  ---
- * If save data protection circuit is omitted, the possibility of break SRAM save game (ocarina of time etc.) will increase.
+ * Even if there is a save data protection circuit, save data for software that uses SRAM (Ocarina of Time, etc.) is easily damaged, so be careful.
  * Do not insert the cartridge until you start up the software on the Windows side and look at the message of [INSERT CART AND PRESS ENTER].
  * Do not remove the cartridge during the access LED is lit.
 
-## 開発環境 / Environment
-- TargetOS : Windows
-- Main-Parts : FT232HL + MCP23S17
-
- * コンパイルにはこちらのライブラリが必要です。depends following library.  
+## 開発環境 / dev env
+コンパイルにはこちらのライブラリが必要です。depends following library.  
 <https://github.com/RGBA-CRT/RGBALib>
 
 ## 参考 / Reference pages
