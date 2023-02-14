@@ -68,10 +68,10 @@ Sub InitSPI()
 	 */
 
 
-'	memcpy(outbuf+c, ex"\x85\x97\x8c\x8A\x86\x02\x00", 7) :	c+ = 7	'NormalSpeed For MaskROM
-'	memcpy(outbuf+c, ex"\x85\x97\x8c\x8A\x86\x03\x00", 7) :	c+ = 7	'SlowSpeed For FlashCart
-'	memcpy(outbuf+c, ex"\x85\x97\x8c\x8A\x86\x00\x00", 7) :	c+ = 7	'OverSpeed
-	memcpy(outbuf+c, ex"\x85\x97\x8c\x8A\x86\x00\x00", 7) :	c+ = 7	'OverSpeed
+'	memcpy(outbuf+c, ex"\x85\x97\x8c\x8A\x86\x02\x00", 7) :	c+ = 7	'10MHz NormalSpeed For MaskROM
+'	memcpy(outbuf+c, ex"\x85\x97\x8c\x8A\x86\x03\x00", 7) :	c+ = 7	'7.5MHz SlowSpeed For FlashCart
+'	memcpy(outbuf+c, ex"\x85\x97\x8c\x8A\x86\x01\x00", 7) :	c+ = 7	'15MHz OverSpeed
+	memcpy(outbuf+c, ex"\x85\x97\x8c\x8A\x86\x00\x00", 7) :	c+ = 7	'30MHz OverSpeed
 
 	SPI_CS(1)
 End Sub
@@ -231,8 +231,9 @@ End Function
 */
 Function FT_JoybusDecode2Bit(in As Byte, ByRef err As DWord) As DWord
 	Dim out As Byte
-	if (in And &HF0) = &HE0 then
-'	if (in And &HF0 Or &H20) = &HE0 then
+'	if (in And &HF0) = &HE0 then
+'	if (in And &H60) then ' Š°—e
+	if (in And &HF0 Or &H20) = &HE0 then
 		FT_JoybusDecode2Bit = 1
 	else if (in And &HF0) = &H00 then
 	else
@@ -245,7 +246,7 @@ Function FT_JoybusDecode2Bit(in As Byte, ByRef err As DWord) As DWord
 	else
 		err++
 	endif
-	if err>0 And err<2 then		printf(ex"JOYBUS LOGIC: first err %02X\n", in)
+	if err>0 And err<2 then		printf(ex"JOYBUS LOGIC: first err %02X\n", in As Byte)
 End Function
 
 Function FT_JoybusEncode2Bit(in As Byte) As Byte
@@ -263,6 +264,7 @@ End Function
 
 function FT_JoybusDecode(input As BytePtr, inputSize As DWord, output As BytePtr, outputSize As DWord) As BOOL
 	Dim i As DWord, loop_num As DWord, err As DWord
+'	Dump(input, inputSize)
 	loop_num = inputSize / 4
 	if outputSize < loop_num then loop_num = outputSize
 	for i = 0 to loop_num-1
