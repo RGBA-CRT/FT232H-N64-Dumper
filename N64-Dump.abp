@@ -656,10 +656,11 @@ Sub PrintRomInfo(header As *NUS_ROM_HEADER)
 
 End Sub
 
-Const NUS_SLOVE_SAMPLE_SIZE1 = &H400 ' need for ロボットポンコッツ64(NUS-NR7J)
+Const NUS_SLOVE_SAMPLE_SIZE1 = &H80
 Const NUS_SLOVE_SAMPLE_SIZE2 = &H10
 Const NUS_SLOVE_FF_FILL_HASH = &H652D544C ' SampleSize変わるたびに更新必要
 Const NUS_SLOVE_00_FILL_HASH = &HC2A8FA9D ' SampleSize変わるたびに更新必要
+Const HASH3_OFFSET = 512*1024 ' ロボットポンコッツ64 NUS-NR7Jにおいて0x1000000がちょうど00データのためずらした位置の再読み込みが必要
 
 Function NUS_ReadDataSingle(buffer As BytePtr, address As DWord, size As DWord) As BOOL
 	if size>NUS_DUMP_BUFFER_SIZE then exitfunction
@@ -707,7 +708,7 @@ End Function
 Function SloveRomSize(reason As *BytePtr) As DWord
 	Dim i As Long
 	Dim sloveAddress As DWord
-	Dim headerHash As DWord, lastHash As DWord, hash As DWord, hash2 As DWord
+	Dim headerHash As DWord, lastHash As DWord, hash As DWord, hash2 As DWord, hash3 As DWord
 	Const slovePatternCount = 8
 	Dim slovePattern[slovePatternCount] = [
 		0, 4, 8, 12, 16, 32, 40, 48, 64, 
@@ -715,6 +716,9 @@ Function SloveRomSize(reason As *BytePtr) As DWord
 
 	N64PowerON()
 
+#ifdef _DEBUG
+		printf(ex"ROM SLOVE: 00_FILL=%08X FF_FILL=%08X \n", NUS_SLOVE_00_FILL_HASH, NUS_SLOVE_FF_FILL_HASH)
+#endif
 	For i = 0 To slovePatternCount
 		' READ
 		sloveAddress = CART_BASEADR_ROM + (slovePattern[i] * 1024*1024)
@@ -723,14 +727,23 @@ Function SloveRomSize(reason As *BytePtr) As DWord
 		' Ref: https://twitter.com/HelicopterP64/status/1608976626125275137
 		hash = NUS_GetHash(sloveAddress, NUS_SLOVE_SAMPLE_SIZE1, NUS_SLOVE_SAMPLE_SIZE1)
 		hash2 = NUS_GetHash(sloveAddress, NUS_SLOVE_SAMPLE_SIZE1, NUS_SLOVE_SAMPLE_SIZE2)
+		hash3 = NUS_GetHash(sloveAddress + HASH3_OFFSET, NUS_SLOVE_SAMPLE_SIZE1, NUS_SLOVE_SAMPLE_SIZE1)
 #ifdef _DEBUG
-		printf(ex" === %dMB === %08X %08X \n", slovePattern[i], hash, hash2)
+		printf(ex" === %3dMB === adr:%08X hash1:%08X hash2:%08X hash3:%08X \n", slovePattern[i], sloveAddress, hash, hash2, hash3)
 #endif
 
-		' CHECK FF FILL
-		if hash = NUS_SLOVE_FF_FILL_HASH then reason[0] = "detect 0xFF fill":ExitFor
-		if hash = NUS_SLOVE_00_FILL_HASH then reason[0] = "detect 0x00 fill":ExitFor
-		if hash <> hash2 then reason[0] = "detect unstable area":ExitFor
+		if hash <> hash2 then 
+			reason[0] = "detect unstable area"
+			ExitFor
+		endif
+		if (hash = NUS_SLOVE_FF_FILL_HASH) AND (hash3 = hash) then 
+			reason[0] = "detect 0xFF fill"
+			ExitFor
+		endif
+		if (hash = NUS_SLOVE_00_FILL_HASH) AND (hash3 = hash) then 
+			reason[0] = "detect 0x00 fill"
+			ExitFor
+		endif
 
 		if i = 0 then
 			' MEMORY HEADER
