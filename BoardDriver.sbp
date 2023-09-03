@@ -166,8 +166,8 @@ Function ListUpFTDI_Devices() As Long
 	Dim i As Long
 	Dim serial[64] As Byte, desc[64] As Byte
 	For i = 0 To devCount-1
-		if FT_ListDevices(i, serial, FT_LIST_BY_INDEX or FT_OPEN_BY_SERIAL_NUMBER) <> FT_OK then ExitFunction
-		if FT_ListDevices(i, desc , FT_LIST_BY_INDEX or FT_OPEN_BY_DESCRIPTION) <> FT_OK then ExitFunction
+		if FT_ListDevices(i, serial, FT_LIST_BY_INDEX or FT_OPEN_BY_SERIAL_NUMBER) <> FT_OK then continue
+		if FT_ListDevices(i, desc , FT_LIST_BY_INDEX or FT_OPEN_BY_DESCRIPTION) <> FT_OK then continue
 		printf(ex" [%02d]%s - %s\n", i, serial, desc)
 	Next i
 	Print

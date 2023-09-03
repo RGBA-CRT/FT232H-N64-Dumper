@@ -87,7 +87,7 @@ End
 Sub Main()
 
 
-	Print " - N64 ROM DUMPER with FT232H v1.1 - PROGRAMMED BY RGBA_CRT 2016-2023"
+	Print " - N64 ROM DUMPER with FT232H v1.2 - PROGRAMMED BY RGBA_CRT 2016-2023"
 	Print
 
 	DevIdx = ListUpFTDI_Devices()
@@ -450,6 +450,9 @@ Sub Main()
 			case 82
 				N64PowerON()
 
+			case 1204
+				SPFlash_Test()
+
 		End Select
 
 		Print ex"\n\n"
@@ -540,7 +543,7 @@ Function DumpFullRom(fileName As BytePtr, RomSize As DWord)(BaseAddress As DWord
 
 		if reqAdr Mod (&H5000*2) = 0 then
 			ConsoleReturnLine()
-			printf(ex"Address = %08X ... %d%% [%d KB/s] ", reqAdr, (reqAdr/RomSize)*100, reqAdr/(GetTickCount()-time))
+			printf(ex"Address = 0x%08X ... %d.%d%% [%d KB/s] ", reqAdr, (reqAdr/RomSize)*100, ((reqAdr/RomSize) * 1000) Mod 10, reqAdr/(GetTickCount()-time))
 			if GetKeyState(VK_ESCAPE) And &H80 then Print ex"\n[ESC]Cancelled by user.":Goto *DFR_EXIT
 		endif
 	'	if reqAdr Mod &H100000 = 0 then Sleep(200)
@@ -553,6 +556,15 @@ Function DumpFullRom(fileName As BytePtr, RomSize As DWord)(BaseAddress As DWord
 
 *DFR_EXIT
 	free(inbuf)
+
+	Dim hash_buf As BytePtr
+	hash_buf = calloc(1024*1024)
+	out.setFilePtr(&H1000)
+	out.read(hash_buf, &H100000)
+	printf(ex"head hash = 0x%08X\n",crc32.GetHash(hash_buf, &HFFFFF))
+	free(hash_buf)
+
+
 	out.close()
 	N64PowerOFF()
 	FT_Purge(hFT, FT_PURGE_RX or FT_PURGE_TX)
@@ -638,7 +650,7 @@ Sub PrintRomInfo(header As *NUS_ROM_HEADER)
 	ChangeEndianDW(header->Raw.CRC2)
 	ChangeEndianDW(header->Raw.EntryPoint)
 
-	printf(ex"N64 ROM Infomation\n\tTitle : %s \n\tGameID : NUS-%s \n\tVersion : 1.%d\n\tCIC Type : %s\n\tCRC1 : 0x%08X\n\tCRC2 : 0x%08X\n\tEntryPtr : 0x%08X\n\tCompress : %s\n", 
+	printf(ex"N64 ROM Infomation\n\tTitle    : %s \n\tGameID   : NUS-%s \n\tVersion  : 1.%d\n\tCIC Type : %s\n\tCRC1     : 0x%08X\n\tCRC2     : 0x%08X\n\tEntryPtr : 0x%08X\n\tCompress : %s\n", 
 		header->Title, 
 		header->GameID_str, 
 		header->Raw.Version, 
@@ -701,7 +713,7 @@ Function NUS_GetHash(address As DWord, size As DWord)(blockSize As DWord) As DWo
 	if NUS_ReadData(buf, address, size, blockSize) <> TRUE then ExitFunction
 '	FillMemory(buf, size, &H00)
 	NUS_GetHash = crc32.GetHash(buf, size)
-	'Dump(buf,size)
+	'Dump(buf, size)
 End Function
 
 'ROMÉTÉCÉYÇêÑë™Ç∑ÇÈ
@@ -713,6 +725,8 @@ Function SloveRomSize(reason As *BytePtr) As DWord
 	Dim slovePattern[slovePatternCount] = [
 		0, 4, 8, 12, 16, 32, 40, 48, 64, 
 	] As Byte
+
+	reason[0]=NULL
 
 	N64PowerON()
 
@@ -732,15 +746,15 @@ Function SloveRomSize(reason As *BytePtr) As DWord
 		printf(ex" === %3dMB === adr:%08X hash1:%08X hash2:%08X hash3:%08X \n", slovePattern[i], sloveAddress, hash, hash2, hash3)
 #endif
 
-		if hash <> hash2 then 
+		if hash <> hash2 then
 			reason[0] = "detect unstable area"
 			ExitFor
 		endif
-		if (hash = NUS_SLOVE_FF_FILL_HASH) AND (hash3 = hash) then 
+		if (hash = NUS_SLOVE_FF_FILL_HASH) AND (hash3 = hash) then
 			reason[0] = "detect 0xFF fill"
 			ExitFor
 		endif
-		if (hash = NUS_SLOVE_00_FILL_HASH) AND (hash3 = hash) then 
+		if (hash = NUS_SLOVE_00_FILL_HASH) AND (hash3 = hash) then
 			reason[0] = "detect 0x00 fill"
 			ExitFor
 		endif
@@ -766,7 +780,7 @@ Function SloveRomSize(reason As *BytePtr) As DWord
 	N64PowerOFF()
 	'free(header)
 	'free(inbuf )
-	if reason[0] = NULL then	reason[0] = "none"
+	if reason[0] = NULL then	reason[0] = "max ROM size"
 End Function
 
 
@@ -793,7 +807,7 @@ Sub PrintBuffer()
 End Sub
 
 
-Const TEST_DUMP_BLOCK_SIZE = &H200
+Const TEST_DUMP_BLOCK_SIZE = &H100
 Sub testDump(Adr As DWord)
 	N64PowerON()
 	NUS_SetAddress(NUS_GS_HEADER_OFFSET + Adr)
@@ -815,9 +829,13 @@ Function MakeRomFileName(buf As BytePtr, buflen As DWord, header As *NUS_ROM_HEA
 	Dim ver As Long
 	ver = 10 + (header->Raw.Version) As Long
 
+	Dim region As Char
+	region = header->Raw.GameID[3]
+	if region=0 then region=GetByte("-")
+
 	wsprintf(rom_title, "%s (%c) (V%d.%d)", 
 		header->Title, header->Raw.GameID[3], ver / 10, ver Mod 10)
 
 	memcpy(buf, rom_title, buflen-1)
 	buf[buflen-1] = 0
-End Function
+End Function

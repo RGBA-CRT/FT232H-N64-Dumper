@@ -11,27 +11,35 @@ Sub flash_printID(baseAdr As DWord)
 
 	 '' Read manufacturer ID
 	NUS_SetAddress(baseAdr)
-	NUS_readRequest(&H8)
+	NUS_readRequest(&H100)
 
-	NUS_SetAddress(baseAdr + &H100)
-	NUS_readRequest(&H90)
+	'NUS_readRequest(&H8)
+
+'	NUS_SetAddress(baseAdr + &H100)
+'	NUS_readRequest(&H90)
+
+'	NUS_SetAddress(baseAdr + &H1c)
+'	NUS_readRequest(&H2)
 
 	'RESET
 	NUS_SetAddress(baseAdr )
 	NUS_writeData(&HFF)
 
-	Dim inbuf[&H220] As Byte, inSize As DWord
-	FillMemory(inbuf, &H220, &HCC)
+	Dim inbuf[&H200] As Byte, inSize As DWord
+	FillMemory(inbuf, &H200, &HCC)
 	FTDI_SendCommand()
-	FT_Read(hFT, inbuf, &H10, inSize)
-	FT_Read(hFT, inbuf+&H20, &H120, inSize)
+	FT_Read(hFT, inbuf, &H200, inSize)
+'	FT_Read(hFT, inbuf+&H20, &H120+4, inSize)
 
-	Dump(inbuf, &H130, baseAdr)
+	Print "ID-CFI area"
+	Dump(inbuf, &H200, baseAdr)
 
-	Dim mfID As Word, deviceID As Word
+	Dim mfID As Word, deviceID As Word, second_id As DWord
 	mfID = ChangeEndianWord(GetWord(inbuf+0))
 	deviceID = ChangeEndianWord(GetWord(inbuf+2))
-	printf(ex"ManufactureID : %04X DeviceID : %04X\n", mfID, deviceID)
+	second_id = ChangeEndianWord(GetWord(inbuf+&H1c))
+
+	printf(ex"ManufactureID : %04X DeviceID : %04X, SencondDevId:%x\n", mfID, deviceID, second_id)
 
 	'https:'www.jedec.org/sites/default/files/docs/JEP106AJ.pdf
 	if mfID = &H89 then
@@ -126,6 +134,20 @@ Sub flash_printID(baseAdr As DWord)
 		End Select
 
 		Print
+	Elseif mfID = 1 And deviceID=&H227E then
+		Print "Infineon? S29GL series"
+		Select case second_id
+			Case &H2228
+				Print "1Gbit"
+			Case &H2223
+				Print "512Mbit"
+			Case &H2222
+				Print "256Mbit"
+			Case &H2221
+				Print "128Mbit"
+			Case Else 
+				Print "Unkwon"
+		End Select
 	endif
 
 End Sub
@@ -583,3 +605,173 @@ Sub ReadCFI()
 
 End Sub
 
+Sub ROM_FlashCommand(base As DWord, adr AS DWord, data AS Word)
+	NUS_SetAddress(base + adr )
+	NUS_writeData(data)
+	printf(ex"FLASH_CMD: %08x(%x) -> %04x\n", base+adr, adr>>1, data)
+End Sub
+
+function SPFlash_Status(address As DWord) AS Word
+	Dim inSize AS DWord
+
+'	NUS_SetAddress(CART_BASEADR_ROM + (&H555 << 1))
+'	NUS_writeData(&HAA)
+/*	ROM_FlashCommand(CART_BASEADR_ROM, &H555<< 1, &HAA)
+	ROM_FlashCommand(CART_BASEADR_ROM, &H2AA<< 1, &H55)
+	ROM_FlashCommand(CART_BASEADR_ROM, &H555<< 1, &H90)
+
+	 '' Read manufacturer ID
+	NUS_SetAddress(CART_BASEADR_ROM)
+	NUS_readRequest(&H1)
+	NUS_writeData(&HF0)
+				FTDI_SendCommand()
+	FT_Read(hFT, VarPtr(SPFlash_Status), 2, inSize)	
+	printf(ex"tmp=%x\n", SPFlash_Status)
+				
+
+	NUS_writeData(&HF0)
+	ROM_FlashCommand(CART_BASEADR_ROM, &H555<< 1, &HAA)
+	ROM_FlashCommand(CART_BASEADR_ROM, &H2AA<< 1, &H55)*/
+	ROM_FlashCommand(CART_BASEADR_ROM, &H555<< 1, &HF0)
+	ROM_FlashCommand(CART_BASEADR_ROM, &H555<< 1, &H71)
+	ROM_FlashCommand(CART_BASEADR_ROM, &H555<< 1, &H70)
+'	NUS_SetAddress(CART_BASEADR_ROM)
+	
+	NUS_SetAddress(CART_BASEADR_ROM + address)
+'	FTDI_SendCommand()
+
+	FT_WAIT(10)
+	NUS_readRequest(8)
+	FTDI_SendCommand()
+	Dim buffer[16] As Byte
+	FT_Read(hFT, buffer, 16, inSize)	
+	Dump(buffer,16,address)
+
+'	FT_Read(hFT, VarPtr(SPFlash_Status), 2, inSize)	
+End function
+
+Sub SPFlash_WaitDone(address As DWord, expected_word As Word)
+	Do
+		NUS_SetAddress(address )
+		FTDI_SendCommand()
+		NUS_readRequest(1)
+		
+		Dim poll As Word, status As Word, inSize As DWord
+		FTDI_SendCommand()
+		FT_Read(hFT, VarPtr(poll), 2, inSize)
+		'FT_Read(hFT, VarPtr(status), 2, inSize)
+		printf(ex"Flash_wait: %X -> %X expect=%X\n", address,poll, expected_word)
+		if (poll OR &HFF7F) = (expected_word OR &HFF7F) then 
+			printf(ex"‚æ‚¢‚Ì‚Å‚Í\n")
+			'exitdo
+		endif
+		'status = SPFlash_Status(address)
+		'printf(ex"Flash_wait: %X -> %X expect=%X\n", address,status, expected_word)
+		Sleep(16)
+	Loop
+	
+	NUS_SetAddress(CART_BASEADR_ROM)
+	NUS_readRequest(64)
+	
+	Dim buf[128] as byte
+	FTDI_SendCommand()
+	FT_Read(hFT, buf, 128, inSize)
+	Dump(buf,128)
+End Sub
+
+' https://www.infineon.com/dgdl/Infineon-S29GL01GS_S29GL512S_S29GL256S_S29GL128S_128_Mb_256_Mb_512_Mb_1_Gb_GL-S_MIRRORBIT_TM_Flash_Parallel_3-DataSheet-v20_00-EN.pdf?fileId=8ac78c8c7d0d8da4017d0ed07ac14bd5
+' and cartreader
+Sub SPFlash_SectorErase(sector_address AS DWord)
+	' WRITE UNLOCK
+	ROM_FlashCommand(CART_BASEADR_ROM, &H555<< 1, &HAA)
+	ROM_FlashCommand(CART_BASEADR_ROM, &H2AA<< 1, &H55)
+
+	' WRITE SECTOR ERACE CYCLES\
+	ROM_FlashCommand(CART_BASEADR_ROM, &H555<< 1, &H80)
+	ROM_FlashCommand(CART_BASEADR_ROM, &H555<< 1, &HAA)
+	ROM_FlashCommand(CART_BASEADR_ROM, &H2AA<< 1, &H55)
+	ROM_FlashCommand(CART_BASEADR_ROM, sector_address, &H30)
+
+	FTDI_SendCommand()
+
+	SPFlash_WaitDone(CART_BASEADR_ROM + sector_address, &HFFFF)
+End Sub
+Sub SPFlash_ChipErase()
+	' WRITE UNLOCK
+	ROM_FlashCommand(CART_BASEADR_ROM, &H555<< 1, &HAA)
+	ROM_FlashCommand(CART_BASEADR_ROM, &H2AA<< 1, &H55)
+
+	' WRITE SECTOR ERACE CYCLES\
+	ROM_FlashCommand(CART_BASEADR_ROM, &H555<< 1, &H80)
+	ROM_FlashCommand(CART_BASEADR_ROM, &H555<< 1, &HAA)
+	ROM_FlashCommand(CART_BASEADR_ROM, &H2AA<< 1, &H55)
+	ROM_FlashCommand(CART_BASEADR_ROM, &H555<< 1, &H10)
+
+	FTDI_SendCommand()
+
+	SPFlash_WaitDone(CART_BASEADR_ROM, &HFFFF)
+End Sub
+
+
+Sub SPFlash_WriteSector(address As DWord, data AS BytePtr, size As DWord)
+
+	Dim offset = 0 As DWord, bi AS DWord, word As Word
+	Do
+		' WRITE UNLOCK
+		ROM_FlashCommand(CART_BASEADR_ROM, &H555<< 1, &HAA)
+		ROM_FlashCommand(CART_BASEADR_ROM, &H2AA<< 1, &H55)
+
+	Const flash_buf_size = 32
+		ROM_FlashCommand(CART_BASEADR_ROM, address+offset, &H25)
+		ROM_FlashCommand(CART_BASEADR_ROM, address+offset, (flash_buf_size/2)-1)
+
+		for bi=0 to flash_buf_size-2 step 2
+			word = ((data[offset] AND &HFF)<<8) OR (data[offset+1] AND &HFF)
+			ROM_FlashCommand(CART_BASEADR_ROM, address + offset, word)
+			offset+=2
+			'NUS_SetAddress( CART_BASEADR_ROM + address + offset)
+			'NUS_writeData(data[offset]<<8 OR (data[offset+1] AND &HFF))		
+		Next bi
+		ROM_FlashCommand(CART_BASEADR_ROM, address+offset-2, &H29)
+		FTDI_SendCommand()
+		SPFlash_WaitDone(CART_BASEADR_ROM+address+offset-2,/*ChangeEndianWord*/(word))
+		if offset>=size then ExitDo
+	Loop
+
+End Sub
+
+Sub SPFlash_Test()
+	
+				EnterSlowMode()
+	N64PowerON()
+				FTDI_SendCommand()
+			'	IntelFlash_SetReadConfigRegister(CART_BASEADR_ROM)
+
+
+			'	IntelFlash_SetReadConfigRegister(CART_BASEADR_ROM)
+
+	SPFlash_SectorErase(0)
+	printf(ex"status=%04x\n",SPFlash_Status(&H100))
+	
+	MCP_WriteRegister(MCP23017_GPIOB, EEP_CLK)
+				FTDI_SendCommand()
+	MCP_WriteRegister(MCP23017_GPIOB, RESET or EEP_CLK)
+				FTDI_SendCommand()
+	printf(ex"status=%04x\n",SPFlash_Status(0))
+'				FTDI_SendCommand()
+'SPFlash_ChipErase()
+/*
+	dim infile As File
+	infile.openFile("T:\edit.n64", GENERIC_READ)
+
+	Dim buf As BytePtr, bufSize AS DWord
+	bufSize=infile.length()
+	buf=malloc(bufSize)
+	infile.read(buf,bufSize)
+	infile.close()
+
+	SPFlash_WriteSector(0, buf, &H20000)
+*/
+	N64PowerOFF()	
+	
+End Sub
