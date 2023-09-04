@@ -608,7 +608,7 @@ End Sub
 Sub ROM_FlashCommand(base As DWord, adr AS DWord, data AS Word)
 	NUS_SetAddress(base + adr )
 	NUS_writeData(data)
-	printf(ex"FLASH_CMD: %08x(%x) -> %04x\n", base+adr, adr>>1, data)
+	'printf(ex"FLASH_CMD: %08x(%x) -> %04x\n", base+adr, adr>>1, data)
 End Sub
 
 function SPFlash_Status(address As DWord) AS Word
@@ -637,51 +637,86 @@ function SPFlash_Status(address As DWord) AS Word
 	ROM_FlashCommand(CART_BASEADR_ROM, &H555<< 1, &H70)
 '	NUS_SetAddress(CART_BASEADR_ROM)
 	
-	NUS_SetAddress(CART_BASEADR_ROM + address)
+'	NUS_SetAddress(CART_BASEADR_ROM + address)
 '	FTDI_SendCommand()
 
-	FT_WAIT(10)
+/*	FT_WAIT(10)
 	NUS_readRequest(8)
 	FTDI_SendCommand()
 	Dim buffer[16] As Byte
 	FT_Read(hFT, buffer, 16, inSize)	
-	Dump(buffer,16,address)
-
+'	Dump(buffer,16,address)
+*/
 '	FT_Read(hFT, VarPtr(SPFlash_Status), 2, inSize)	
 End function
 
-Sub SPFlash_WaitDone(address As DWord, expected_word As Word)
-	Do
-		NUS_SetAddress(address )
+Function ReadImmediate(adr AS DWord) As Word
+		NUS_SetAddress(adr )
 		FTDI_SendCommand()
 		NUS_readRequest(1)
-		
-		Dim poll As Word, status As Word, inSize As DWord
 		FTDI_SendCommand()
-		FT_Read(hFT, VarPtr(poll), 2, inSize)
-		'FT_Read(hFT, VarPtr(status), 2, inSize)
-		printf(ex"Flash_wait: %X -> %X expect=%X\n", address,poll, expected_word)
-		if (poll OR &HFF7F) = (expected_word OR &HFF7F) then 
-			printf(ex"‚æ‚¢‚Ì‚Å‚Í\n")
-			'exitdo
+		Dim inSize As DWord
+		FT_Read(hFT, VarPtr(ReadImmediate), 2, inSize)
+End Function
+
+Sub SPFlash_WaitDone(address As DWord, expected_word As Word)
+	Dim poll As Word
+	expected_word = ChangeEndianWord(expected_word)
+	Do
+		poll = ReadImmediate(address)
+		printf(ex"Flash_wait : %x -> %4x expect=%4x\r", address,poll, expected_word)
+		if (poll OR &H7FFF) = (expected_word OR &H7FFF) then 
+			'printf(ex"‚æ‚¢‚Ì‚Å‚Í\n")
+			exitdo
+		Else
+			if (poll And &H2000) OR (poll And &H0200) Then
+				poll = ReadImmediate(address)
+				printf(ex"Flash_wait2: %x -> %4x expect=%4x\r", address,poll, expected_word)
+				if (poll OR &H7FFF) = (expected_word OR &H7FFF) then 
+					exitdo					
+				Else
+					printf(ex"FLASH OPERATION FAIL: %X\n", address)
+					Sleep(-1)
+				End If
+			Else
+				'DO NOTHING
+			End If
 		endif
 		'status = SPFlash_Status(address)
 		'printf(ex"Flash_wait: %X -> %X expect=%X\n", address,status, expected_word)
 		Sleep(16)
 	Loop
 	
-	NUS_SetAddress(CART_BASEADR_ROM)
-	NUS_readRequest(64)
+'	NUS_SetAddress(CART_BASEADR_ROM)
+'	NUS_readRequest(64)
 	
-	Dim buf[128] as byte
+/*	Dim buf[128] as byte
 	FTDI_SendCommand()
 	FT_Read(hFT, buf, 128, inSize)
-	Dump(buf,128)
+	Dump(buf,128)*/
+End Sub
+
+Sub SPFlash_WaitErase(address As DWord, expected_word As Word)
+	Dim poll As Word
+	expected_word = ChangeEndianWord(expected_word)
+	Do
+		poll = ReadImmediate(address)
+		printf(ex"erase_wait : %x -> %4x expect=%4x\n", address,poll, expected_word)
+		if (poll OR &H7FFF) = (expected_word OR &H7FFF) then 
+			'printf(ex"‚æ‚¢‚Ì‚Å‚Í\n")
+			exitdo
+		endif
+		'status = SPFlash_Status(address)
+		'printf(ex"Flash_wait: %X -> %X expect=%X\n", address,status, expected_word)
+		Sleep(16)
+	Loop
+	
 End Sub
 
 ' https://www.infineon.com/dgdl/Infineon-S29GL01GS_S29GL512S_S29GL256S_S29GL128S_128_Mb_256_Mb_512_Mb_1_Gb_GL-S_MIRRORBIT_TM_Flash_Parallel_3-DataSheet-v20_00-EN.pdf?fileId=8ac78c8c7d0d8da4017d0ed07ac14bd5
 ' and cartreader
 Sub SPFlash_SectorErase(sector_address AS DWord)
+	printf(ex"sector %x erase...", CART_BASEADR_ROM + sector_address)
 	' WRITE UNLOCK
 	ROM_FlashCommand(CART_BASEADR_ROM, &H555<< 1, &HAA)
 	ROM_FlashCommand(CART_BASEADR_ROM, &H2AA<< 1, &H55)
@@ -694,7 +729,8 @@ Sub SPFlash_SectorErase(sector_address AS DWord)
 
 	FTDI_SendCommand()
 
-	SPFlash_WaitDone(CART_BASEADR_ROM + sector_address, &HFFFF)
+	SPFlash_WaitErase(CART_BASEADR_ROM + sector_address, &HFFFF)
+	printf(ex"done\n")
 End Sub
 Sub SPFlash_ChipErase()
 	' WRITE UNLOCK
@@ -709,19 +745,19 @@ Sub SPFlash_ChipErase()
 
 	FTDI_SendCommand()
 
-	SPFlash_WaitDone(CART_BASEADR_ROM, &HFFFF)
+	SPFlash_WaitErase(CART_BASEADR_ROM, &HFFFF)
 End Sub
 
 
 Sub SPFlash_WriteSector(address As DWord, data AS BytePtr, size As DWord)
-
 	Dim offset = 0 As DWord, bi AS DWord, word As Word
+'	offset=size-32
 	Do
 		' WRITE UNLOCK
 		ROM_FlashCommand(CART_BASEADR_ROM, &H555<< 1, &HAA)
 		ROM_FlashCommand(CART_BASEADR_ROM, &H2AA<< 1, &H55)
 
-	Const flash_buf_size = 32
+		Const flash_buf_size = 32
 		ROM_FlashCommand(CART_BASEADR_ROM, address+offset, &H25)
 		ROM_FlashCommand(CART_BASEADR_ROM, address+offset, (flash_buf_size/2)-1)
 
@@ -735,43 +771,58 @@ Sub SPFlash_WriteSector(address As DWord, data AS BytePtr, size As DWord)
 		ROM_FlashCommand(CART_BASEADR_ROM, address+offset-2, &H29)
 		FTDI_SendCommand()
 		SPFlash_WaitDone(CART_BASEADR_ROM+address+offset-2,/*ChangeEndianWord*/(word))
+		
+		Dim progress As DWord
+		progress = (offset As QWord *10000) / size
+		printf(ex"                                               writing sector... %08X : %d.%03d%%  \r",
+			CART_BASEADR_ROM+address, progress / 100, progress Mod 100)
 		if offset>=size then ExitDo
 	Loop
 
 End Sub
 
-Sub SPFlash_Test()
+Sub SPFlash_WriteFile(filename AS BytePtr)
 	
 				EnterSlowMode()
 	N64PowerON()
 				FTDI_SendCommand()
-			'	IntelFlash_SetReadConfigRegister(CART_BASEADR_ROM)
 
 
-			'	IntelFlash_SetReadConfigRegister(CART_BASEADR_ROM)
-
-	SPFlash_SectorErase(0)
-	printf(ex"status=%04x\n",SPFlash_Status(&H100))
-	
-	MCP_WriteRegister(MCP23017_GPIOB, EEP_CLK)
-				FTDI_SendCommand()
-	MCP_WriteRegister(MCP23017_GPIOB, RESET or EEP_CLK)
-				FTDI_SendCommand()
-	printf(ex"status=%04x\n",SPFlash_Status(0))
-'				FTDI_SendCommand()
-'SPFlash_ChipErase()
-/*
 	dim infile As File
-	infile.openFile("T:\edit.n64", GENERIC_READ)
+	infile.openFile(filename, GENERIC_READ)
+'	infile.openFile("T:\edit.n64", GENERIC_READ)
+'	infile.openFile("T:\viewer.z64", GENERIC_READ)
 
 	Dim buf As BytePtr, bufSize AS DWord
 	bufSize=infile.length()
 	buf=malloc(bufSize)
 	infile.read(buf,bufSize)
+
+	Dim offset As DWord, sector_size As DWord, total_size As DWord
+	offset = 0'&H01fc0000
+	sector_size = &H20000
+	total_size = infile.length()
+	Dim start As DWord
+	start = GetTickCount()
+	Do 
+		Dim progress AS DWord
+		progress = ((offset As QWord * 10000) / total_size) As DWord
+		printf(ex"[WRITE] %08X/%08X ... %d.%03d%% ... %dKB/s\n", 
+			offset, total_size, progress/100, progress Mod 100,
+			sector_size / ((GetTickCount()-start)/1000))
+		SPFlash_SectorErase(offset)
+		SPFlash_WriteSector(offset, buf+offset, sector_size)
+		offset += sector_size
+		if offset>=total_size then exitdo
+
+		Dim tmp AS DWord
+	'	printf(ex"next sector: %X\n", offset)
+	'	Input "[PRESS ENTER TO CONTINUE]", tmp
+	Loop
+	
+
 	infile.close()
 
-	SPFlash_WriteSector(0, buf, &H20000)
-*/
 	N64PowerOFF()	
-	
+	printf(ex"done\n")
 End Sub

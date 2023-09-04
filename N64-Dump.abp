@@ -451,7 +451,9 @@ Sub Main()
 				N64PowerON()
 
 			case 1204
-				SPFlash_Test()
+				'SPFlash_Test()
+				Input ex"[WRITE] path> : ", adrStr
+				SPFlash_WriteFile(StrPtr(adrStr))
 
 		End Select
 

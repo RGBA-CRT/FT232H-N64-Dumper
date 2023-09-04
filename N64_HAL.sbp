@@ -151,11 +151,11 @@ Sub NUS_writeData(outData As Word)
 	outbuf[c] = outData And &H00FF	:	c++
 	outbuf[c] = &HFF				:	c++	'ALL OUTPUT
 
-	FT_WAIT(10)
+	FT_WAIT(1)
 	NUS_SetCtrlPin(NUS_RE)
-	FT_WAIT(150)
+	FT_WAIT(15)
 	NUS_SetCtrlPin(NUS_WE or NUS_RE)
-	FT_WAIT(40)
+	FT_WAIT(4)
 End Sub
 
 Function NUS_InitRomAccess(hFT As HANDLE) As BOOL
